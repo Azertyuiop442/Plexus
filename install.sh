@@ -62,21 +62,25 @@ cargo build --release
 echo "-> Deploying to ~/.commandcode/bin/..."
 mkdir -p ~/.commandcode/bin ~/.local/bin
 
-rm -f ~/.commandcode/bin/plexus ~/.commandcode/bin/cc-mux
-cp target/release/plexus ~/.commandcode/bin/plexus
-cp target/release/cc-mux ~/.commandcode/bin/cc-mux
-
-if [[ "$OS" == "Darwin" ]]; then
-    xattr -c ~/.commandcode/bin/plexus ~/.commandcode/bin/cc-mux 2>/dev/null || true
-    codesign -s - -f ~/.commandcode/bin/plexus 2>/dev/null || true
-    codesign -s - -f ~/.commandcode/bin/cc-mux 2>/dev/null || true
+install -m 755 target/release/cc-mux ~/.commandcode/bin/cc-mux
+ln -sf cc-mux ~/.commandcode/bin/plexus
+if [ -f target/release/cc-dashboard ]; then
+    install -m 755 target/release/cc-dashboard ~/.commandcode/bin/cc-dashboard
 fi
 
-ln -sf ~/.commandcode/bin/plexus ~/.local/bin/plexus 2>/dev/null || true
-ln -sf ~/.commandcode/bin/cc-mux ~/.local/bin/cc-mux 2>/dev/null || true
+if [[ "$OS" == "Darwin" ]]; then
+    xattr -c ~/.commandcode/bin/plexus ~/.commandcode/bin/cc-mux ~/.commandcode/bin/cc-dashboard 2>/dev/null || true
+    codesign -s - -f ~/.commandcode/bin/plexus 2>/dev/null || true
+    codesign -s - -f ~/.commandcode/bin/cc-mux 2>/dev/null || true
+    codesign -s - -f ~/.commandcode/bin/cc-dashboard 2>/dev/null || true
+fi
+
+ln -sf ~/.commandcode/bin/cc-mux ~/.local/bin/plexus
+ln -sf ~/.commandcode/bin/cc-mux ~/.local/bin/cc-mux
+ln -sf ~/.commandcode/bin/cc-dashboard ~/.local/bin/cc-dashboard 2>/dev/null || true
 
 echo "======================================================"
-echo " [OK] Plexus successfully installed!                  "
-echo "    - Standalone: Run 'plexus'                        "
+echo " [OK] Plexus successfully installed and synchronized! "
+echo "    - Standalone: Run 'plexus' or 'cc-mux'            "
 echo "    - In Command Code: Type '/dashboard'              "
 echo "======================================================"

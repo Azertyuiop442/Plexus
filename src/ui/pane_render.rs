@@ -457,16 +457,16 @@ pub fn render_pane(
     if show_cursor {
         if let Some(vp) = alacritty_terminal::term::point_to_viewport(offset, cursor_point) {
             let (cx, cy) = (vp.column.0 as u16, vp.line as u16);
-            if cx < content_area.width && cy < content_area.height {
+            if cx < content_area.width && cy < content_area.height && (bh == 0 || cy >= bh) {
                 let gx = content_area.left() + cx;
                 let gy = content_area.top() + cy;
-                let (bx, by, bw, bh) = (
+                let (bx, by, bw, buf_h) = (
                     buf.area().x,
                     buf.area().y,
                     buf.area().width,
                     buf.area().height,
                 );
-                if gx >= bx && gx < bx + bw && gy >= by && gy < by + bh {
+                if gx >= bx && gx < bx + bw && gy >= by && gy < by + buf_h {
                     let tcell = &mut buf[(gx, gy)];
                     let pal = Palette::dark();
 

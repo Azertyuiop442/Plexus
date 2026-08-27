@@ -104,6 +104,7 @@ pub fn reload_mux() {
     use std::os::unix::process::CommandExt;
 
     crate::ipc::log_append("resize.log", "reload: SIGUSR1 exec");
+    crate::orphan_journal::kill_all_registered();
     let mut stdout = io::stdout();
     let _ = execute!(stdout, DisableMouseCapture);
     let _ = execute!(stdout, crossterm::event::DisableBracketedPaste);

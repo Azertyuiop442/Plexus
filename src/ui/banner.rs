@@ -1,5 +1,4 @@
 
-use alacritty_terminal::grid::Dimensions;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 
@@ -249,41 +248,6 @@ pub fn is_banner_enabled() -> bool {
     true
 }
 
-fn is_native_boot_logo_present(pane: &MuxPane, _target_h: u16) -> bool {
-    let pty_h = pane.term.screen_lines();
-    let min_line = 0i32;
-    let max_line = pty_h as i32;
-
-    let scan_rows = 6;
-    let mut block_char_count = 0usize;
-    let mut has_top_prompt = false;
-    let content = pane.term.renderable_content();
-
-    for item in content.display_iter {
-        let line_val = item.point.line.0;
-        if line_val < min_line || line_val >= max_line {
-            continue;
-        }
-        if let Some(vp) = alacritty_terminal::term::point_to_viewport(0, item.point) {
-            let y = vp.line as usize;
-            if y < scan_rows {
-                let ch = item.cell.c;
-                if ch == '█' || ch == '▀' || ch == '▄' {
-                    block_char_count += 1;
-                }
-                if ch == '❯' || ch == '?' || ch == '>' {
-                    has_top_prompt = true;
-                }
-            }
-        }
-    }
-
-    if has_top_prompt {
-        return false;
-    }
-
-    block_char_count >= 15
-}
 
 pub fn banner_height(pane: &mut MuxPane, area: Rect) -> u16 {
     if !is_banner_enabled() || area.width < MIN_BANNER_W || area.height < 6 {
@@ -295,25 +259,6 @@ pub fn banner_height(pane: &mut MuxPane, area: Rect) -> u16 {
     let actual_h = target_h.min(area.height);
 
     let _ = ensure_boot_info(pane, area);
-
-    let metrics = pane.scroll_metrics();
-    if metrics.offset_from_bottom > 0 {
-        return 0;
-    }
-
-    if pane.state.turns > 0 {
-        return 0;
-    }
-
-    let content = pane.term.renderable_content();
-    let cursor_y = content.cursor.point.line.0;
-    if cursor_y >= 0 && (cursor_y as u16) < actual_h {
-        return 0;
-    }
-
-    if !is_native_boot_logo_present(pane, actual_h) {
-        return 0;
-    }
 
     actual_h
 }
@@ -958,21 +903,15 @@ mod tests {
 
         let area = Rect::new(0, 0, 100, 30);
         let h_at_bottom = banner_height(&mut p, area);
-        assert_eq!(h_at_bottom, 0, "expected 0 banner at bottom with no prompt text");
+        assert_eq!(h_at_bottom, BOX_H_LARGE);
 
         p.scroll_display(5);
         let h_scrolled = banner_height(&mut p, area);
-        assert_eq!(
-            h_scrolled, 0,
-            "banner must not pin while scrolled: history must stay fully visible"
-        );
+        assert_eq!(h_scrolled, BOX_H_LARGE);
 
         p.scroll_reset();
         let h_after_reset = banner_height(&mut p, area);
-        assert_eq!(
-            h_after_reset, 0,
-            "after scroll reset, banner should follow the scan (0 here)"
-        );
+        assert_eq!(h_after_reset, BOX_H_LARGE);
     }
 }
 
