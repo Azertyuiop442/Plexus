@@ -1,0 +1,37 @@
+[package]
+name = "plexus"
+version = "0.1.0"
+edition = "2021"
+description = "Lightweight native terminal multiplexer and live action dock in Rust"
+authors = ["442"]
+license = "SEE LICENSE IN LICENSE.md"
+
+[lib]
+name = "cc_dashboard"
+path = "src/lib.rs"
+
+[[bin]]
+name = "plexus"
+path = "src/mux.rs"
+
+[[bin]]
+name = "cc-mux"
+path = "src/mux.rs"
+
+[[bin]]
+name = "cc-dashboard"
+path = "src/main.rs"
+
+[dependencies]
+ctrlc = "3"
+libc = "0.2"
+ratatui = "0.30"
+crossterm = "0.29"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+portable-pty = "0.9"
+alacritty_terminal = "0.26"
+unicode-width = "0.2"
+nf-icons = "0.1.0"
+tui-spinner = "0.4"
+tachyonfx = { version = "0.25", default-features = false }

@@ -1,0 +1,13 @@
+/target
+.commandcode/
+tests/
+AGENTS.md
+scripts/
+*.html
+assets/*.html
+ISSUES_TRACKER.md
+issues.json
+.env
+.DS_Store
+Thumbs.db
+
