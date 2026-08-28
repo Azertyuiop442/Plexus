@@ -2,8 +2,9 @@ use alacritty_terminal::grid::Dimensions;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::modals::{
-    open_ai_prefs_modal, open_all_sessions_modal, open_context_modal, open_full_config_modal,
-    open_mod_config_modal, open_navigator_modal, sync_modal_toggles,
+    open_ai_prefs_modal, open_all_sessions_modal, open_all_sessions_modal_with_msg,
+    open_context_modal, open_full_config_modal, open_mod_config_modal, open_navigator_modal,
+    sync_modal_toggles,
 };
 use super::pane_ops::{active_pane_size, spawn_pane};
 use crate::state::AppState;
@@ -552,6 +553,61 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                     }
                     state.active_modal = None;
                 } else if is_all_sessions {
+                    if let Some(ModalRow::Choice { options, current, .. }) = modal.rows.get(modal.selected) {
+                        let opt_val = options.get(*current).map(|(_, v, _)| v.as_str()).unwrap_or("");
+                        let open_ids: Vec<String> = state
+                            .panes
+                            .iter()
+                            .filter_map(|p| p.lock().ok())
+                            .filter_map(|p| p.state.session_id.clone())
+                            .filter(|id| !id.is_empty())
+                            .collect();
+                        if opt_val == "execute_clean_all" {
+                            let count = state.sidebar.clean_all_sessions(&open_ids);
+                            let msg = format!("✓ Cleaned {count} workspace session(s)");
+                            open_all_sessions_modal_with_msg(state, Some(&msg));
+                            if let Some(ref mut m) = state.active_modal {
+                                m.set_step(1);
+                            }
+                            return;
+                        } else if opt_val == "execute_clean_24h" {
+                            let count = state.sidebar.clean_old_hours(24, &open_ids);
+                            let msg = if count > 0 {
+                                format!("✓ Cleaned {count} session(s) older than 24h")
+                            } else {
+                                "ℹ No sessions were older than 24h".to_string()
+                            };
+                            open_all_sessions_modal_with_msg(state, Some(&msg));
+                            if let Some(ref mut m) = state.active_modal {
+                                m.set_step(1);
+                            }
+                            return;
+                        } else if opt_val == "execute_clean_3d" {
+                            let count = state.sidebar.clean_old_sessions(3, &open_ids);
+                            let msg = if count > 0 {
+                                format!("✓ Cleaned {count} session(s) older than 3 days")
+                            } else {
+                                "ℹ No sessions were older than 3 days".to_string()
+                            };
+                            open_all_sessions_modal_with_msg(state, Some(&msg));
+                            if let Some(ref mut m) = state.active_modal {
+                                m.set_step(1);
+                            }
+                            return;
+                        } else if opt_val == "execute_clean_7d" {
+                            let count = state.sidebar.clean_old_sessions(7, &open_ids);
+                            let msg = if count > 0 {
+                                format!("✓ Cleaned {count} session(s) older than 7 days")
+                            } else {
+                                "ℹ No sessions were older than 7 days".to_string()
+                            };
+                            open_all_sessions_modal_with_msg(state, Some(&msg));
+                            if let Some(ref mut m) = state.active_modal {
+                                m.set_step(1);
+                            }
+                            return;
+                        }
+                    }
 
                     let Some(session_id) = selected_session_id() else {
                         state.active_modal = None;
@@ -996,6 +1052,10 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                 return;
             }
             KeyCode::Left | KeyCode::Char('h') => {
+                if state.sidebar.selected_row() == Some(SidebarRow::UsageCarousel) {
+                    state.sidebar.prev_usage_tab();
+                    return;
+                }
                 if state.sidebar.active_tab == 1
                     && state.sidebar.settings_menu != SettingsSubMenu::Main
                 {
@@ -1006,6 +1066,10 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                 return;
             }
             KeyCode::Right | KeyCode::Char('l') => {
+                if state.sidebar.selected_row() == Some(SidebarRow::UsageCarousel) {
+                    state.sidebar.next_usage_tab();
+                    return;
+                }
                 state.sidebar.set_active_tab(1);
                 return;
             }
@@ -1024,6 +1088,10 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                 }
             }
             KeyCode::Enter => match state.sidebar.selected_row() {
+                Some(SidebarRow::UsageCarousel) => {
+                    state.sidebar.next_usage_tab();
+                    return;
+                }
                 Some(SidebarRow::NewSession) => {
                     let (cols, rows) = active_pane_size(state);
 
@@ -1104,6 +1172,12 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                     state.sidebar_focus = false;
                     return;
                 }
+                Some(SidebarRow::PrefShowUsage) => {
+                    state.sidebar.show_usage = !state.sidebar.show_usage;
+                    state.sidebar.rebuild_rows();
+                    state.dirty = true;
+                    return;
+                }
                 Some(SidebarRow::PrefFullConfig) => {
                     open_full_config_modal(state);
                     return;
@@ -1170,6 +1244,11 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                 Some(SidebarRow::PrefYolo) => {
                     state.sidebar.yolo_mode = !state.sidebar.yolo_mode;
                     state.sidebar_focus = false;
+                }
+                Some(SidebarRow::PrefShowUsage) => {
+                    state.sidebar.show_usage = !state.sidebar.show_usage;
+                    state.sidebar.rebuild_rows();
+                    state.dirty = true;
                 }
                 Some(SidebarRow::ModConfig(idx)) => {
                     open_mod_config_modal(state, idx);

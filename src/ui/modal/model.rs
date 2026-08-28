@@ -246,6 +246,20 @@ impl Modal {
         true
     }
 
+    pub fn set_step(&mut self, idx: usize) -> bool {
+        if self.steps.is_empty() || idx >= self.steps.len() {
+            return false;
+        }
+        if idx == self.current_step {
+            return true;
+        }
+        self.steps[self.current_step].rows = self.rows.clone();
+        self.current_step = idx;
+        self.rows = self.steps[self.current_step].rows.clone();
+        self.select_first_selectable();
+        true
+    }
+
     pub fn selection_len(&self) -> usize {
         self.rows.len() + self.commands.len()
     }
@@ -493,7 +507,7 @@ impl Modal {
     }
 }
 
-fn is_reasoning_model(model_id: &str) -> bool {
+pub fn is_reasoning_model(model_id: &str) -> bool {
     let id = model_id.to_lowercase();
     if id.is_empty() {
         return false;

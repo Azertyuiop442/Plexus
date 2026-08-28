@@ -350,9 +350,12 @@ pub struct ModsData {
 }
 
 impl ModData {
-
     pub fn active_model(&self) -> Option<&str> {
-        let m = self.model.trim();
+        let m = if !self.model_id.trim().is_empty() {
+            self.model_id.trim()
+        } else {
+            self.model.trim()
+        };
         if m.is_empty() || m.eq_ignore_ascii_case("unknown") {
             None
         } else {

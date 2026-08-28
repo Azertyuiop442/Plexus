@@ -44,6 +44,8 @@ pub struct AppState {
     cached_model: Option<String>,
     cached_effort: Option<String>,
 
+    pub available_update: Option<String>,
+
     pub dirty: bool,
 
     pub events: MuxEventSender,
@@ -116,6 +118,7 @@ impl AppState {
                 - std::time::Duration::from_millis(MODEL_CHECK_MS + 1),
             cached_model: None,
             cached_effort: None,
+            available_update: None,
             dirty: true,
             events,
             event_rx: Some(event_rx),
@@ -144,17 +147,7 @@ impl AppState {
         }
         self.last_model_check = std::time::Instant::now();
         let model = self.mods_data.active_model();
-
-        let raw_id = self
-            .mods_data
-            .mods
-            .iter()
-            .rev()
-            .find_map(|m| (!m.data.model_id.trim().is_empty()).then(|| m.data.model_id.clone()));
-        let effort = raw_id
-            .as_deref()
-            .and_then(|m| self.mods_data.active_effort(m))
-            .or_else(|| model.as_deref().and_then(|m| self.mods_data.active_effort(m)));
+        let effort = model.as_deref().and_then(|m| self.mods_data.active_effort(m));
         self.cached_model = model;
         self.cached_effort = effort;
     }

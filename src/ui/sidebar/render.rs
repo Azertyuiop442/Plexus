@@ -8,7 +8,7 @@ use crate::ui::widget::SelectableRow;
 
 use super::live_block::render_live_block;
 use super::models::SettingsSubMenu;
-use super::models::{SidebarRow, SidebarView, SESSIONS_SHOWN};
+use super::models::{ClickZone, SidebarRow, SidebarView, SESSIONS_SHOWN};
 use super::state::{session_title, LiveBlock, Sidebar};
 
 fn fill_area(frame: &mut ratatui::Frame, area: Rect, bg: Color) {
@@ -128,10 +128,27 @@ pub fn render_sidebar(
                         .set_style(x_style);
                 }
             }
+            view.zones.push(super::models::ClickZone {
+                y: bottom_y,
+                x_start,
+                x_end: x_start + x_len as u16,
+                row: super::models::SidebarRow::Twitter,
+            });
 
-            let ver_text = format!(" v{} ", env!("CARGO_PKG_VERSION"));
+            let has_update = sidebar.available_update.is_some();
+            let ver_text = if has_update {
+                " ! NEW ".to_string()
+            } else {
+                format!(" v{} ", env!("CARGO_PKG_VERSION"))
+            };
             let ver_len = crate::ui::text::width(&ver_text);
-            let ver_style = Style::default().fg(p.overlay0);
+            let ver_style = if has_update {
+                Style::default()
+                    .fg(p.green)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(p.overlay0)
+            };
             let ver_start = x_start.saturating_sub(ver_len as u16);
 
             if box_w >= 22 && ver_start > x0 + 8 {
@@ -142,6 +159,14 @@ pub fn render_sidebar(
                             .set_symbol(&ch.to_string())
                             .set_style(ver_style);
                     }
+                }
+                if has_update {
+                    view.zones.push(super::models::ClickZone {
+                        y: bottom_y,
+                        x_start: ver_start,
+                        x_end: x_start,
+                        row: super::models::SidebarRow::Update,
+                    });
                 }
             }
 
@@ -356,6 +381,7 @@ pub fn render_sidebar(
 
             for (row_type, label, on) in [
                 (SidebarRow::PrefYolo, "YOLO Mode", Some(sidebar.yolo_mode)),
+                (SidebarRow::PrefShowUsage, "Show Usage", Some(sidebar.show_usage)),
             ] {
                 let sel = selected_row == Some(row_type);
                 let value_span = if let Some(on) = on {
@@ -485,7 +511,11 @@ pub fn render_sidebar(
 
     if sidebar.settings_menu == SettingsSubMenu::Main {
 
-        let bottom_limit = inner.bottom().saturating_sub(3);
+        let bottom_limit = if sidebar.usage.is_some() && sidebar.show_usage {
+            inner.bottom().saturating_sub(6)
+        } else {
+            inner.bottom().saturating_sub(3)
+        };
         y += 1;
         if y < bottom_limit {
             let history_icon = nf_icons::nf!("nf-cod-history");
@@ -608,6 +638,138 @@ pub fn render_sidebar(
                 ),
             ];
             card_row(frame, &mut y, inner, view, row_type, spans, sel, focused, &p);
+        }
+    }
+
+    if sidebar.settings_menu == SettingsSubMenu::Main && sidebar.show_usage {
+        if let Some(ref usage) = sidebar.usage {
+            let mut yu = inner.bottom().saturating_sub(6);
+            if yu < inner.bottom() {
+                let gauge_icon = nf_icons::nf!("nf-cod-dashboard");
+                let usage_header = Line::from(vec![
+                    Span::styled(
+                        format!("{gauge_icon} USAGE "),
+                        Style::default().fg(p.accent).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        "─".repeat(width.saturating_sub(9)),
+                        Style::default().fg(p.surface1),
+                    ),
+                ]);
+                frame.buffer_mut().set_line(
+                    inner.left() + 1,
+                    yu,
+                    &usage_header,
+                    inner.width.saturating_sub(1),
+                );
+                yu += 1;
+
+                let sel = selected_row == Some(SidebarRow::UsageCarousel);
+                let tab = sidebar.usage_tab % 3;
+
+                let (tag, pct, info) = match tab {
+                    0 => {
+                        let p_val = usage.five_hour_percent();
+                        let reset = usage
+                            .five_hour
+                            .as_ref()
+                            .map(|w| crate::usage::format_duration_from_now(w.reset_at))
+                            .unwrap_or_default();
+                        let info_str = if !reset.is_empty() && reset != "now" {
+                            format!(" {reset}")
+                        } else {
+                            String::new()
+                        };
+                        ("5h", p_val, info_str)
+                    }
+                    1 => {
+                        let p_val = usage.weekly_percent();
+                        let reset = usage
+                            .weekly
+                            .as_ref()
+                            .map(|w| crate::usage::format_duration_from_now(w.reset_at))
+                            .unwrap_or_default();
+                        let info_str = if !reset.is_empty() && reset != "now" {
+                            format!(" {reset}")
+                        } else {
+                            String::new()
+                        };
+                        ("Wk", p_val, info_str)
+                    }
+                    _ => {
+                        let p_val = usage.monthly_percent();
+                        let info_str = format!(" ${:.0}", usage.monthly_remaining);
+                        ("Mo", p_val, info_str)
+                    }
+                };
+
+                let color = crate::usage::get_usage_color(pct, &p);
+                let pct_str = format!("{:.0}%", pct);
+                let info_part = if info.is_empty() {
+                    String::new()
+                } else {
+                    format!(" {info}")
+                };
+                let left_len = 1 + 1 + tag.len() + 1;
+                let right_len = 1 + pct_str.len() + info_part.chars().count() + 1 + 1;
+                let fixed_total = 1 + left_len + right_len;
+                let bar_w = width.saturating_sub(fixed_total).max(4);
+                let (filled, empty) = crate::usage::build_ascii_bar(pct, bar_w);
+                let pad_count = width.saturating_sub(fixed_total + bar_w);
+
+                let chevron_style = if sel {
+                    Style::default().fg(p.text).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(p.overlay0)
+                };
+
+                let mut spans = vec![
+                    Span::styled("‹", chevron_style),
+                    Span::styled(format!(" {tag} "), label_style(&p, sel)),
+                    Span::styled(filled, Style::default().fg(color).add_modifier(Modifier::BOLD)),
+                    Span::styled(empty, Style::default().fg(p.overlay1)),
+                    Span::styled(
+                        format!(" {pct_str}"),
+                        Style::default().fg(color).add_modifier(Modifier::BOLD),
+                    ),
+                ];
+                if !info_part.is_empty() {
+                    spans.push(Span::styled(info_part, Style::default().fg(p.overlay0)));
+                }
+                spans.push(Span::raw(" ".repeat(pad_count + 1)));
+                spans.push(Span::styled("›", chevron_style));
+
+                view.zones.push(ClickZone {
+                    y: yu,
+                    x_start: inner.left(),
+                    x_end: inner.left() + 4,
+                    row: SidebarRow::UsagePrev,
+                });
+                view.zones.push(ClickZone {
+                    y: yu,
+                    x_start: inner.right().saturating_sub(4),
+                    x_end: inner.right(),
+                    row: SidebarRow::UsageNext,
+                });
+                view.zones.push(ClickZone {
+                    y: yu,
+                    x_start: inner.left() + 4,
+                    x_end: inner.right().saturating_sub(4),
+                    row: SidebarRow::UsageCarousel,
+                });
+
+                card_row(
+                    frame,
+                    &mut yu,
+                    inner,
+                    view,
+                    SidebarRow::UsageCarousel,
+                    spans,
+                    sel,
+                    focused,
+                    &p,
+                );
+            }
         }
     }
 

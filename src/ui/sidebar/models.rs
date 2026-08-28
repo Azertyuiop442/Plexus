@@ -88,6 +88,10 @@ pub const RIGHT_SIDEBARS: &[(&str, &str)] = &[
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SidebarRow {
+    UsageCarousel,
+    UsagePrev,
+    UsageNext,
+
     NewSession,
     Session(usize),
     MoreSessions,
@@ -96,11 +100,14 @@ pub enum SidebarRow {
     NavModConfig,
     NavAIPrefs,
     Reload,
+    Update,
+    Twitter,
 
     NavBack,
 
     PrefFullConfig,
     PrefYolo,
+    PrefShowUsage,
 
     ModConfig(usize),
     LiveBlockOpen(usize),

@@ -1,13 +1,18 @@
-<h1 align="center">PLEXUS</h1>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/header/grid.svg?title=PLEXUS&subtitle=Modular+Terminal+Multiplexer+%26+Live+Action+Dock&logo=rust&theme=cyan&mode=dark" />
+    <img alt="PLEXUS" src="https://shieldcn.dev/header/grid.svg?title=PLEXUS&subtitle=Modular+Terminal+Multiplexer+%26+Live+Action+Dock&logo=rust&theme=cyan&mode=light" />
+  </picture>
+</p>
 
 <p align="center">
   <b>A modular, lightweight terminal multiplexer and live action dock in Rust - fully customizable with your own mods and agent feeds.</b>
 </p>
 
 <p align="center">
-  <a href="#"><img src="https://img.shields.io/badge/Version-v0.1.0-24837B?style=flat-square&amp;labelColor=1C1B1A" alt="Version"/></a>
-  <a href="https://peership.dev"><img src="https://img.shields.io/badge/Feedback-Want_to_leave_a_feedback%3F-8B7EC8?style=flat-square&amp;labelColor=1C1B1A" alt="Want to leave a feedback?"/></a>
-  <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-Community_%26_Commercial-DA702C?style=flat-square&amp;labelColor=1C1B1A" alt="License"/></a>
+  <a href="https://github.com/Azertyuiop442/Plexus/releases"><img src="https://shieldcn.dev/badge/plexus-v0.1.2-24837b.svg?logo=rust&variant=outline" alt="Plexus v0.1.2"/></a>
+  <a href="https://github.com/Azertyuiop442/Plexus"><img src="https://shieldcn.dev/github/stars/Azertyuiop442/Plexus.svg?variant=outline" alt="GitHub Stars"/></a>
+  <a href="LICENSE.md"><img src="https://shieldcn.dev/badge/license-Community_%26_Commercial.svg?variant=outline" alt="License"/></a>
 </p>
 
 <p align="center">
@@ -85,9 +90,11 @@ Source-available under the [Community &amp; Commercial License](LICENSE.md). Fre
 
 ---
 
-<h2 align="center">Feedback &amp; Community</h2>
+<h2 align="center">Reviews &amp; Ratings</h2>
 
 <p align="center">
-  Have feedback, bug reports, or ideas? We're actively co-testing on PeerShip! <br/>
-  <b><a href="https://peership.dev">Test Plexus and leave feedback on PeerShip (peership.dev)</a></b>
+  <a href="https://peership.dev/apps/abd3bcce-ceb3-4b11-a3d8-0781d98e43dc"><img src="https://peership.dev/api/badge/abd3bcce-ceb3-4b11-a3d8-0781d98e43dc" alt="Plexus on PeerShip"/></a>
+  <br/><br/>
+  Tested Plexus? Share your rating and review on PeerShip! <br/>
+  👉 <b><a href="https://peership.dev/apps/abd3bcce-ceb3-4b11-a3d8-0781d98e43dc">Leave your review for Plexus on PeerShip</a></b>
 </p>

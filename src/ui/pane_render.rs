@@ -82,21 +82,23 @@ pub fn render_pane_chrome(
     buf[(area.x, last_y)].set_symbol("╰").set_style(border);
     buf[(last_x, last_y)].set_symbol("╯").set_style(border);
 
-    let title_style = if focused {
-        Style::default().fg(p.accent).add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(p.overlay0)
-    };
-    let t = format!(" {} ", title);
-    let mut x = area.x + 1;
-    for ch in t.chars() {
-        if x >= last_x {
-            break;
+    if !title.is_empty() && title != "terminal" && !title.starts_with("Terminal") {
+        let title_style = if focused {
+            Style::default().fg(p.accent).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(p.overlay0)
+        };
+        let t = format!(" {} ", title);
+        let mut x = area.x + 1;
+        for ch in t.chars() {
+            if x >= last_x {
+                break;
+            }
+            buf[(x, area.y)]
+                .set_symbol(&ch.to_string())
+                .set_style(title_style);
+            x += 1;
         }
-        buf[(x, area.y)]
-            .set_symbol(&ch.to_string())
-            .set_style(title_style);
-        x += 1;
     }
 
     Rect::new(
@@ -117,6 +119,10 @@ pub fn render_pane(
     show_cost_bar: bool,
     mod_known: bool,
 ) {
+    if area.width < 3 || area.height < 3 {
+        return;
+    }
+
     super::pane::poll_metrics(pane);
 
     let title = if pane.state.title.is_empty() {
@@ -133,11 +139,16 @@ pub fn render_pane(
         inner
     };
 
+    if content_area.width == 0 || content_area.height == 0 {
+        return;
+    }
+
+    let bh = crate::ui::banner::banner_height(pane, content_area);
     let pty_h = if show_cost_bar && content_area.height >= 4 {
         content_area.height - 1
     } else {
         content_area.height
-    };
+    }.max(1);
     pane.resize(content_area.width, pty_h);
     if pane.term.columns() != content_area.width as usize
         || pane.term.screen_lines() != pty_h as usize
@@ -248,15 +259,12 @@ pub fn render_pane(
                 Style::default().bg(ratatui::style::Color::Rgb(0, 0, 0)),
             );
         }
-        let spin_char = pane.spinner_frame();
-        let spin_msg = format!(" {} Loading session... ", spin_char);
+
+        let spin_msg = format!("{} connecting to session...", spinner_frame());
         let msg_len = spin_msg.chars().count() as u16;
         let cx = content_area.left() + content_area.width.saturating_sub(msg_len) / 2;
         let cy = content_area.top() + content_area.height / 2;
-        let spin_style = Style::default()
-            .fg(pal.accent)
-            .bg(pal.surface0)
-            .add_modifier(Modifier::BOLD);
+        let spin_style = Style::default().fg(pal.accent).bg(pal.surface0);
         for (i, ch) in spin_msg.chars().enumerate() {
             let gx = cx + i as u16;
             if gx < content_area.right() && cy < content_area.bottom() {
@@ -269,8 +277,6 @@ pub fn render_pane(
     }
 
     let at_prompt_idle = !pane.is_busy() && pane.state.has_user_prompted;
-
-    let bh = crate::ui::banner::banner_height(pane, content_area);
 
     {
         let total = pane.term.total_lines();
@@ -399,13 +405,13 @@ pub fn render_pane(
 
         let gx = content_area.left() + x;
         let gy = content_area.top() + y;
-        let (bx, by, bw, bh) = (
+        let (bx, by, bw, bheight) = (
             buf.area().x,
             buf.area().y,
             buf.area().width,
             buf.area().height,
         );
-        if gx >= bx && gx < bx + bw && gy >= by && gy < by + bh {
+        if gx >= bx && gx < bx + bw && gy >= by && gy < by + bheight {
             let tcell = &mut buf[(gx, gy)];
 
             let same_glyph = tcell.symbol().chars().next() == Some(cell.c);
@@ -425,15 +431,15 @@ pub fn render_pane(
     {
         let sel_pal = Palette::dark();
         let sel_bg = Style::default().bg(sel_pal.blue).fg(sel_pal.text);
-        let (bx, by, bw, bh) = (
+        let (bx, by, bw, bheight) = (
             buf.area().x,
             buf.area().y,
             buf.area().width,
             buf.area().height,
         );
-        for y in 0..content_area.height {
+        for y in 0..pty_h {
             let gy = content_area.top() + y;
-            if gy < by || gy >= by + bh {
+            if gy < by || gy >= by + bheight {
                 continue;
             }
             for x in 0..content_area.width {
@@ -457,7 +463,7 @@ pub fn render_pane(
     if show_cursor {
         if let Some(vp) = alacritty_terminal::term::point_to_viewport(offset, cursor_point) {
             let (cx, cy) = (vp.column.0 as u16, vp.line as u16);
-            if cx < content_area.width && cy < content_area.height && (bh == 0 || cy >= bh) {
+            if cx < content_area.width && cy < pty_h && (bh == 0 || cy >= bh) {
                 let gx = content_area.left() + cx;
                 let gy = content_area.top() + cy;
                 let (bx, by, bw, buf_h) = (
@@ -485,7 +491,7 @@ pub fn render_pane(
     let metrics = pane.scroll_metrics();
     if metrics.max_offset_from_bottom > 0 && inner.width > 1 {
         let p = Palette::dark();
-        let track = Rect::new(inner.right() - 1, inner.top(), 1, pty_h);
+        let track = Rect::new(inner.right() - 1, content_area.top() + bh, 1, pty_h.saturating_sub(bh));
         crate::ui::widget::render_scrollbar(
             frame,
             metrics,
@@ -500,7 +506,7 @@ pub fn render_pane(
         if metrics.offset_from_bottom == 0 {
             let buf = frame.buffer_mut();
             let gx = inner.right() - 1;
-            let gy = inner.top();
+            let gy = content_area.top() + bh;
             if gx < buf.area().right() && gy < buf.area().bottom() {
                 buf[(gx, gy)]
                     .set_symbol("↑")

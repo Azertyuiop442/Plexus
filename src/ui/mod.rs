@@ -182,9 +182,14 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
             mod_known,
         );
 
-        let banner_h = banner::banner_height(&mut p, pane_area);
+        let banner_h = if state.picker.is_some() {
+            0
+        } else {
+            banner::banner_height(&mut p, pane_area)
+        };
         if banner_h > 0 {
-            let banner_area = Rect::new(pane_area.x, pane_area.y, pane_area.width, banner_h);
+            let banner_w = pane_area.width.saturating_sub(2);
+            let banner_area = Rect::new(pane_area.x + 1, pane_area.y + 1, banner_w, banner_h);
             let yolo = p.state.yolo_mode;
             banner::maybe_render(
                 frame,
@@ -203,7 +208,6 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
     }
 
     if let Some(ref picker_state) = state.picker {
-
         let visible = picker_state.picker.filtered_indices().len().min(14);
         let popup = modal::modal_rect(area, visible + 4, 0, 56).unwrap_or(Rect::new(
             area.x + area.width / 4,

@@ -119,7 +119,7 @@ fn draw_wordmark(area: Rect, buf: &mut Buffer) {
         .alignment(Alignment::Center)
         .render(title, buf);
     Paragraph::new(
-        Line::from("TERMINAL MULTIPLEXER · v0.1.0").style(Style::default().fg(MUTED)),
+        Line::from(format!("TERMINAL MULTIPLEXER · v{}", env!("CARGO_PKG_VERSION"))).style(Style::default().fg(MUTED)),
     )
     .alignment(Alignment::Center)
     .render(tagline, buf);

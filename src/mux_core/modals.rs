@@ -36,7 +36,7 @@ pub fn open_context_modal(state: &mut AppState) {
             .iter()
             .find(|m| !m.data.turns.is_empty());
 
-        let mut m = Modal::new("context_modal", format!("ⓘ {} — Session Context", title));
+        let mut m = Modal::new("context_modal", format!("ⓘ {} - Session Context", title));
 
         let mut session_rows: Vec<ModalRow> = vec![
             ModalRow::Info(format!("Working Directory: {}", cwd_str)),
@@ -150,10 +150,16 @@ fn fmt_usd(n: f64) -> String {
 }
 
 pub fn open_all_sessions_modal(state: &mut AppState) {
+    open_all_sessions_modal_with_msg(state, None);
+}
+
+pub fn open_all_sessions_modal_with_msg(state: &mut AppState, feedback: Option<&str>) {
     let mut m = Modal::new("all_sessions", "Manage Sessions");
-    m.rows.push(ModalRow::Separator("Stored Sessions".into()));
+
+    let mut session_rows = vec![];
+    session_rows.push(ModalRow::Separator("Stored Sessions".into()));
     if state.sidebar.sessions.is_empty() {
-        m.rows.push(ModalRow::Info("No stored sessions found.".into()));
+        session_rows.push(ModalRow::Info("No stored sessions found.".into()));
     } else {
         for (i, s) in state.sidebar.sessions.iter().enumerate() {
             let open = state.session_is_open(&s.id);
@@ -182,7 +188,7 @@ pub fn open_all_sessions_modal(state: &mut AppState) {
                     ),
                 ]
             };
-            m.rows.push(ModalRow::Choice {
+            session_rows.push(ModalRow::Choice {
                 key: format!("sess_{}", s.id),
                 label,
                 options,
@@ -192,8 +198,64 @@ pub fn open_all_sessions_modal(state: &mut AppState) {
             });
         }
     }
+    m.add_step("Sessions", session_rows);
+
+    let mut maint_rows = vec![];
+    if let Some(msg) = feedback {
+        maint_rows.push(ModalRow::InfoColored {
+            text: msg.to_string(),
+            color: "green".into(),
+        });
+    }
+    maint_rows.push(ModalRow::Separator("Workspace Information".into()));
+    maint_rows.push(ModalRow::Info(format!("Project: {}", state.sidebar.project)));
+    maint_rows.push(ModalRow::Info(format!("Stored: {} session(s)", state.sidebar.sessions.len())));
+    maint_rows.push(ModalRow::Separator("Cleanup Actions".into()));
+    maint_rows.push(ModalRow::Choice {
+        key: "action_clean_24h".into(),
+        label: "Clean sessions older than 24h (> 1 day)".into(),
+        options: vec![
+            ("Clean > 24h".into(), "execute_clean_24h".into(), "warning".into()),
+        ],
+        current: 0,
+        searchable: false,
+        color: "yellow".into(),
+    });
+    maint_rows.push(ModalRow::Choice {
+        key: "action_clean_3d".into(),
+        label: "Clean sessions older than 3 days (> 3 days)".into(),
+        options: vec![
+            ("Clean > 3d".into(), "execute_clean_3d".into(), "warning".into()),
+        ],
+        current: 0,
+        searchable: false,
+        color: "yellow".into(),
+    });
+    maint_rows.push(ModalRow::Choice {
+        key: "action_clean_7d".into(),
+        label: "Clean sessions older than 7 days (> 7 days)".into(),
+        options: vec![
+            ("Clean > 7d".into(), "execute_clean_7d".into(), "warning".into()),
+        ],
+        current: 0,
+        searchable: false,
+        color: "yellow".into(),
+    });
+    maint_rows.push(ModalRow::Choice {
+        key: "action_clean_all".into(),
+        label: "Clean all workspace sessions".into(),
+        options: vec![
+            ("Clean All".into(), "execute_clean_all".into(), "danger".into()),
+        ],
+        current: 0,
+        searchable: false,
+        color: "red".into(),
+    });
+    m.add_step("Maintenance", maint_rows);
+
     m.set_page_size(8);
-    m.hints.push(("Enter".into(), "Open".into()));
+    m.hints.push(("Tab".into(), "Switch Tab".into()));
+    m.hints.push(("Enter".into(), "Execute".into()));
     m.hints.push(("d".into(), "Delete".into()));
     m.select_first_selectable();
     state.active_modal = Some(m);
@@ -919,7 +981,13 @@ fn peak_hours_rows() -> Vec<ModalRow> {
 
     let alerts = read_peak_alerts();
 
-    let mut seen_peak = false;
+    let default_peak_models = [
+        ("deepseek/deepseek-v4-pro", "00-08 UTC"),
+        ("deepseek/deepseek-v4-flash", "00-08 UTC"),
+        ("opensource/deepseek-v4-flash-vision-exp", "00-08 UTC"),
+    ];
+    let mut added_ids = std::collections::HashSet::new();
+
     if let Some(models) = price_json.get("models").and_then(|v| v.as_array()) {
         for m in models {
             let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("");
@@ -927,12 +995,15 @@ fn peak_hours_rows() -> Vec<ModalRow> {
                 Some(t) if t.is_object() => t,
                 _ => continue,
             };
-            seen_peak = true;
             let windows_utc = tod
                 .get("windows")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
+            if windows_utc.is_empty() {
+                continue;
+            }
+            added_ids.insert(id.to_string());
             let short_model = short_model_label(id);
             let countdown = peak_countdown(&windows_utc);
             rows.push(ModalRow::Toggle {
@@ -945,18 +1016,26 @@ fn peak_hours_rows() -> Vec<ModalRow> {
             });
         }
     }
-    if !seen_peak {
-        rows.push(ModalRow::Info(
-            "No peak-hour models found yet. Run one turn with network so the \
-             cost tracker refreshes its pricing cache."
-                .into(),
-        ));
-    } else {
-        rows.push(ModalRow::Info(
-            "Toggle ON to receive peak hour alerts in the status bar before running a turn."
-                .into(),
-        ));
+
+    for (id, windows_utc) in default_peak_models {
+        if !added_ids.contains(id) {
+            let short_model = short_model_label(id);
+            let countdown = peak_countdown(windows_utc);
+            rows.push(ModalRow::Toggle {
+                key: format!("peakAlert.{id}"),
+                label: format!("{short_model} - {countdown}"),
+                enabled: alerts
+                    .get(&format!("peakAlert.{id}"))
+                    .copied()
+                    .unwrap_or(false),
+            });
+        }
     }
+
+    rows.push(ModalRow::Info(
+        "Toggle ON to receive peak hour alerts in the status bar before running a turn."
+            .into(),
+    ));
     rows
 }
 
@@ -1218,7 +1297,7 @@ pub fn open_list_modal(
     modal: &crate::ui::mod_bridge::ModModal,
 ) {
     let title = if modal.title.is_empty() {
-        format!("{} — Select", mod_id)
+        format!("{} - Select", mod_id)
     } else {
         modal.title.clone()
     };
@@ -1286,4 +1365,37 @@ pub fn open_list_modal(
     m.select_first_selectable();
     state.active_modal = Some(m);
 }
+
+pub fn open_update_progress_modal(state: &mut AppState, label: &str, current: usize, total: usize) {
+    let mut m = Modal::new("update_progress", "Updating Plexus");
+    m.rows.push(ModalRow::Separator("Installation in Progress".into()));
+    m.rows.push(ModalRow::Progress {
+        label: label.to_string(),
+        current,
+        total: total.max(1),
+    });
+    m.rows.push(ModalRow::Info("Downloading, compiling and installing in background...".into()));
+    m.rows.push(ModalRow::Info("Log: /tmp/plexus-update.log".into()));
+    m.hints.push(("Auto-Reload".into(), "Plexus will restart once complete".into()));
+    m.select_first_selectable();
+    state.active_modal = Some(m);
+}
+
+pub fn open_update_modal(state: &mut AppState, status: &str) {
+    let mut m = Modal::new("update_status", "Plexus Update");
+    let mut rows = vec![];
+    rows.push(ModalRow::Separator("Update Status".into()));
+    rows.push(ModalRow::InfoColored {
+        text: status.to_string(),
+        color: "green".into(),
+    });
+    rows.push(ModalRow::Info("The update is building and installing in background.".into()));
+    rows.push(ModalRow::Info("Log file: /tmp/plexus-update.log".into()));
+    rows.push(ModalRow::Info("You can continue using Plexus normally.".into()));
+    m.rows = rows;
+    m.hints.push(("Esc / Enter".into(), "Dismiss".into()));
+    m.select_first_selectable();
+    state.active_modal = Some(m);
+}
+
 

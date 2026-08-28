@@ -1,4 +1,5 @@
 
+use alacritty_terminal::grid::Dimensions;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 
@@ -52,20 +53,21 @@ pub fn short_model_display(id: &str) -> String {
 }
 
 pub fn ensure_boot_info(pane: &mut MuxPane, area: Rect) -> bool {
-    if let Some(ref info) = pane.state.boot_info {
-        if area.width <= info.capture_w.saturating_mul(2) {
-            return true;
-        }
+    if pane.state.boot_info.is_some() {
+        return true;
     }
 
-    let scan_h = 24usize.min(area.height as usize);
-    let scan_w = 160usize.min(area.width as usize);
+    let offset = pane.term.grid().display_offset();
+    let scan_h = 24usize.min(pane.term.screen_lines());
+    let scan_w = 160usize.min(pane.term.columns());
     let mut grid: Vec<Vec<char>> = vec![vec![' '; scan_w]; scan_h];
     let content = pane.term.renderable_content();
     for item in content.display_iter {
-        let (x, y) = (item.point.column.0 as usize, item.point.line.0);
-        if y >= 0 && (y as usize) < scan_h && x < scan_w {
-            grid[y as usize][x] = item.cell.c;
+        if let Some(vp) = alacritty_terminal::term::point_to_viewport(offset, item.point) {
+            let (x, y) = (vp.column.0 as usize, vp.line as usize);
+            if y < scan_h && x < scan_w {
+                grid[y][x] = item.cell.c;
+            }
         }
     }
     let lines: Vec<String> = grid
@@ -117,6 +119,18 @@ pub fn ensure_boot_info(pane: &mut MuxPane, area: Rect) -> bool {
                 {
                     return Some(next_line.to_string());
                 }
+            }
+        }
+        if let Some(rest) = trimmed.strip_prefix("# model:") {
+            let m = rest.trim();
+            if !m.is_empty() {
+                return Some(m.to_string());
+            }
+        }
+        if let Some(rest) = trimmed.strip_prefix("model:") {
+            let m = rest.trim();
+            if !m.is_empty() {
+                return Some(m.to_string());
             }
         }
         None
@@ -249,8 +263,64 @@ pub fn is_banner_enabled() -> bool {
 }
 
 
+fn is_terminal_in_interactive_menu(pane: &MuxPane) -> bool {
+    let content = pane.term.renderable_content();
+    if content.mode.contains(alacritty_terminal::term::TermMode::ALT_SCREEN) {
+        return true;
+    }
+
+    let offset = pane.term.grid().display_offset();
+    let scan_h = 35usize.min(pane.term.screen_lines());
+    let scan_w = 120usize.min(pane.term.columns());
+    let mut grid: Vec<Vec<char>> = vec![vec![' '; scan_w]; scan_h];
+    for item in content.display_iter {
+        if let Some(vp) = alacritty_terminal::term::point_to_viewport(offset, item.point) {
+            let (x, y) = (vp.column.0 as usize, vp.line as usize);
+            if y < scan_h && x < scan_w {
+                grid[y][x] = item.cell.c;
+            }
+        }
+    }
+    let lines: Vec<String> = grid
+        .into_iter()
+        .map(|row| row.into_iter().collect::<String>())
+        .collect();
+
+    let full_text = lines.join("\n").to_lowercase();
+    if full_text.contains("(use arrow keys)")
+        || full_text.contains("(use \u{2191}\u{2193}")
+        || full_text.contains("(press <space>")
+        || full_text.contains("(press enter")
+        || full_text.contains("❯ ◉")
+        || full_text.contains("❯ ◯")
+        || full_text.contains("❯ [ ]")
+        || full_text.contains("❯ [x]")
+    {
+        return true;
+    }
+
+    for l in &lines {
+        let t = l.trim().to_lowercase();
+        if t.starts_with('?') && !t.contains("for shortcuts") {
+            let after_q = t.trim_start_matches('?').trim_start();
+            if after_q.starts_with("select ")
+                || after_q.starts_with("choose ")
+                || after_q.starts_with("configure ")
+            {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 pub fn banner_height(pane: &mut MuxPane, area: Rect) -> u16 {
-    if !is_banner_enabled() || area.width < MIN_BANNER_W || area.height < 6 {
+    if !is_banner_enabled()
+        || area.width < MIN_BANNER_W
+        || area.height < 6
+        || is_terminal_in_interactive_menu(pane)
+    {
         return 0;
     }
 
@@ -272,10 +342,14 @@ pub fn maybe_render(
     active_model: Option<&str>,
     active_effort: Option<&str>,
 ) {
-    let is_large = area.width >= 90 && area.height >= 12;
+    let is_large = area.width >= 90 && area.height >= 10;
     let target_h = if is_large { BOX_H_LARGE } else { BOX_H_SMALL };
     let box_h = area.height.min(target_h);
-    if !is_banner_enabled() || area.width < MIN_BANNER_W || box_h < 5 {
+    if !is_banner_enabled()
+        || area.width < MIN_BANNER_W
+        || box_h < 5
+        || is_terminal_in_interactive_menu(pane)
+    {
         return;
     }
 
@@ -329,8 +403,7 @@ fn render_compact_banner(
     let x0 = area.x;
     let y0 = area.y;
 
-    let max_inner_x = x0.saturating_add(box_w).saturating_sub(2);
-    let min_inner_y = y0 + 1;
+    let min_inner_y = y0;
     let max_inner_y = y0.saturating_add(box_h).saturating_sub(2);
 
     let safe_cell = |frame: &mut ratatui::Frame, x: u16, y: u16, ch: &str, style: Style| {
@@ -350,18 +423,12 @@ fn render_compact_banner(
     }
 
     let border_style = Style::default().fg(accent);
-    for x in x0 + 1..x0 + box_w.saturating_sub(1) {
-        safe_cell(frame, x, y0, "─", border_style);
-        safe_cell(frame, x, y0 + box_h - 1, "─", border_style);
+    let div_y = y0 + box_h - 1;
+    for x in x0..x0 + box_w {
+        safe_cell(frame, x, div_y, "─", border_style);
     }
-    for y in y0 + 1..y0 + box_h.saturating_sub(1) {
-        safe_cell(frame, x0, y, "│", border_style);
-        safe_cell(frame, x0 + box_w - 1, y, "│", border_style);
-    }
-    safe_cell(frame, x0, y0, "╭", border_style);
-    safe_cell(frame, x0 + box_w - 1, y0, "╮", border_style);
-    safe_cell(frame, x0, y0 + box_h - 1, "├", border_style);
-    safe_cell(frame, x0 + box_w - 1, y0 + box_h - 1, "┤", border_style);
+    safe_cell(frame, x0.saturating_sub(1), div_y, "├", border_style);
+    safe_cell(frame, x0 + box_w, div_y, "┤", border_style);
 
     let title = if box_w < 45 {
         if boot_info.version.is_empty() {
@@ -376,13 +443,14 @@ fn render_compact_banner(
             format!(" Command Code v{} ", boot_info.version)
         }
     };
+    let top_border_y = y0.saturating_sub(1);
     for (i, ch) in title.chars().enumerate() {
-        let x = x0 + 2 + i as u16;
-        if x < x0 + box_w - 2 {
+        let x = x0 + 1 + i as u16;
+        if x < x0 + box_w - 1 {
             safe_cell(
                 frame,
                 x,
-                y0,
+                top_border_y,
                 &ch.to_string(),
                 Style::default()
                     .fg(accent)
@@ -407,8 +475,8 @@ fn render_compact_banner(
         }
     };
 
-    let inner_min_x = x0 + 1;
-    let inner_max_x = max_inner_x;
+    let inner_min_x = x0;
+    let inner_max_x = x0 + box_w - 1;
     let inner_cx = inner_min_x + (inner_max_x - inner_min_x) / 2;
     let max_text_len = ((inner_max_x - inner_min_x + 1) as usize).saturating_sub(1);
 
@@ -568,8 +636,7 @@ fn render_large_banner(
     let x0 = area.x;
     let y0 = area.y;
 
-    let max_inner_x = x0.saturating_add(box_w).saturating_sub(2);
-    let min_inner_y = y0 + 1;
+    let min_inner_y = y0;
     let max_inner_y = y0.saturating_add(box_h).saturating_sub(2);
 
     let safe_cell = |frame: &mut ratatui::Frame, x: u16, y: u16, ch: &str, style: Style| {
@@ -589,31 +656,26 @@ fn render_large_banner(
     }
 
     let border_style = Style::default().fg(accent);
-    for x in x0 + 1..x0 + box_w.saturating_sub(1) {
-        safe_cell(frame, x, y0, "─", border_style);
-        safe_cell(frame, x, y0 + box_h - 1, "─", border_style);
+    let div_y = y0 + box_h - 1;
+    for x in x0..x0 + box_w {
+        safe_cell(frame, x, div_y, "─", border_style);
     }
-    for y in y0 + 1..y0 + box_h.saturating_sub(1) {
-        safe_cell(frame, x0, y, "│", border_style);
-        safe_cell(frame, x0 + box_w - 1, y, "│", border_style);
-    }
-    safe_cell(frame, x0, y0, "╭", border_style);
-    safe_cell(frame, x0 + box_w - 1, y0, "╮", border_style);
-    safe_cell(frame, x0, y0 + box_h - 1, "├", border_style);
-    safe_cell(frame, x0 + box_w - 1, y0 + box_h - 1, "┤", border_style);
+    safe_cell(frame, x0.saturating_sub(1), div_y, "├", border_style);
+    safe_cell(frame, x0 + box_w, div_y, "┤", border_style);
 
     let title = if boot_info.version.is_empty() {
         " Command Code ".to_string()
     } else {
         format!(" Command Code v{} ", boot_info.version)
     };
+    let top_border_y = y0.saturating_sub(1);
     for (i, ch) in title.chars().enumerate() {
-        let x = x0 + 2 + i as u16;
-        if x < x0 + box_w - 2 {
+        let x = x0 + 1 + i as u16;
+        if x < x0 + box_w - 1 {
             safe_cell(
                 frame,
                 x,
-                y0,
+                top_border_y,
                 &ch.to_string(),
                 Style::default()
                     .fg(accent)
@@ -638,6 +700,7 @@ fn render_large_banner(
         }
     };
 
+    let max_inner_x = x0 + box_w - 1;
     let max_logo_len = boot_info
         .native_logo
         .iter()

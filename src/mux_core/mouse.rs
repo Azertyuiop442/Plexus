@@ -9,7 +9,7 @@ use ratatui::Terminal;
 
 use super::modals::{
     open_ai_prefs_modal, open_all_sessions_modal, open_context_modal, open_full_config_modal,
-    open_mod_config_modal, sync_modal_toggles,
+    open_mod_config_modal, open_update_progress_modal, sync_modal_toggles,
 };
 use super::nav::{change_pane_cwd, reload_mux, send_slash_command};
 use super::pane_ops::{active_pane_size, spawn_pane};
@@ -551,12 +551,7 @@ pub fn handle_mouse(
 
         if col <= sidebar_w {
             state.sidebar_focus = true;
-            if row >= h.saturating_sub(1) {
-                std::process::Command::new("open")
-                    .arg("https://x.com/astra442")
-                    .spawn()
-                    .ok();
-            } else if let Some(sidebar_row) = state
+            if let Some(sidebar_row) = state
                 .sidebar_view
                 .zone_at(col, row)
                 .or_else(|| state.sidebar_view.row_at_y(row))
@@ -618,6 +613,15 @@ pub fn handle_mouse(
                             state.sidebar_focus = false;
                         }
                     }
+                    SidebarRow::UsageCarousel => {
+                        state.sidebar.next_usage_tab();
+                    }
+                    SidebarRow::UsagePrev => {
+                        state.sidebar.prev_usage_tab();
+                    }
+                    SidebarRow::UsageNext => {
+                        state.sidebar.next_usage_tab();
+                    }
                     SidebarRow::MoreSessions => {
                         open_all_sessions_modal(state);
                     }
@@ -641,11 +645,42 @@ pub fn handle_mouse(
 
                         state.sidebar_focus = false;
                     }
+                    SidebarRow::PrefShowUsage => {
+                        state.sidebar.show_usage = !state.sidebar.show_usage;
+                        state.sidebar.rebuild_rows();
+                        state.dirty = true;
+                    }
                     SidebarRow::ModConfig(idx) => {
                         open_mod_config_modal(state, idx);
                     }
                     SidebarRow::Reload => {
                         reload_mux();
+                    }
+                    SidebarRow::Twitter => {
+                        #[cfg(target_os = "macos")]
+                        {
+                            let _ = std::process::Command::new("open")
+                                .arg("https://x.com/astra442")
+                                .spawn();
+                        }
+                        #[cfg(target_os = "linux")]
+                        {
+                            let _ = std::process::Command::new("xdg-open")
+                                .arg("https://x.com/astra442")
+                                .spawn();
+                        }
+                        #[cfg(target_os = "windows")]
+                        {
+                            let _ = std::process::Command::new("cmd")
+                                .args(["/C", "start", "", "https://x.com/astra442"])
+                                .spawn();
+                        }
+                    }
+                    SidebarRow::Update => {
+                        state.sidebar.available_update = None;
+                        open_update_progress_modal(state, "Starting update...", 5, 100);
+                        crate::update::perform_update_with_events(state.events.clone());
+                        state.dirty = true;
                     }
                     SidebarRow::LiveBlockOpen(_) => {
 

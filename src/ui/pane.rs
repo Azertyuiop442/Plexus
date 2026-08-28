@@ -662,8 +662,9 @@ impl MuxPane {
     }
 
         pub fn write_input(&mut self, bytes: &[u8]) {
-        if !bytes.is_empty() {
+        if bytes.contains(&b'\r') {
             self.state.has_user_prompted = true;
+            self.state.turns = self.state.turns.saturating_add(1);
         }
 
         let snaps = should_scroll_to_bottom(bytes)

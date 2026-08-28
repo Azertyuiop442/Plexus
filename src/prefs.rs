@@ -20,6 +20,8 @@ pub struct Prefs {
     pub show_cost_bar: bool,
     #[serde(default = "default_true")]
     pub show_context_btn: bool,
+    #[serde(default = "default_true")]
+    pub show_usage: bool,
     #[serde(default = "default_sidebar_w")]
     pub sidebar_w: u16,
     #[serde(default = "default_true")]
@@ -42,6 +44,7 @@ impl Default for Prefs {
             ide_context: true,
             show_cost_bar: true,
             show_context_btn: true,
+            show_usage: true,
             sidebar_w: 25,
             sidebar_open: true,
         }
@@ -111,6 +114,7 @@ impl Prefs {
             "show_banner": self.show_banner,
             "show_cost_bar": self.show_cost_bar,
             "show_context_btn": self.show_context_btn,
+            "show_usage": self.show_usage,
             "sidebar_w": self.sidebar_w,
             "sidebar_open": self.sidebar_open,
 
@@ -165,6 +169,7 @@ mod tests {
             ide_context: true,
             show_cost_bar: false,
             show_context_btn: true,
+            show_usage: false,
             sidebar_w: 31,
             sidebar_open: false,
         };
@@ -174,6 +179,7 @@ mod tests {
 
         assert_eq!(loaded.show_banner, p.show_banner);
         assert_eq!(loaded.show_cost_bar, p.show_cost_bar);
+        assert_eq!(loaded.show_usage, p.show_usage);
         assert_eq!(loaded.sidebar_w, p.sidebar_w);
         assert_eq!(loaded.sidebar_open, p.sidebar_open);
         assert_eq!(loaded.yolo_mode, p.yolo_mode);

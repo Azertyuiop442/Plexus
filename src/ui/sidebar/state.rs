@@ -139,11 +139,23 @@ pub struct Sidebar {
     pub ide_context: bool,
     pub show_cost_bar: bool,
     pub show_context_btn: bool,
+    pub show_usage: bool,
 
     pub live_blocks: Vec<LiveBlock>,
+    pub available_update: Option<String>,
+    pub usage: Option<crate::usage::UsageData>,
+    pub usage_tab: usize,
 }
 
 impl Sidebar {
+
+    pub fn next_usage_tab(&mut self) {
+        self.usage_tab = (self.usage_tab + 1) % 3;
+    }
+
+    pub fn prev_usage_tab(&mut self) {
+        self.usage_tab = if self.usage_tab == 0 { 2 } else { self.usage_tab - 1 };
+    }
 
     pub fn remove_session_by_id(&mut self, id: &str) {
         let before = self.sessions.len();
@@ -189,7 +201,11 @@ impl Sidebar {
             ide_context: true,
             show_cost_bar: true,
             show_context_btn: true,
+            show_usage: true,
             live_blocks: Vec::new(),
+            available_update: None,
+            usage: crate::usage::load_cached_usage(),
+            usage_tab: 0,
         };
 
         let prefs = crate::prefs::Prefs::load();
@@ -198,6 +214,7 @@ impl Sidebar {
         s.ide_context = prefs.ide_context;
         s.show_cost_bar = prefs.show_cost_bar;
         s.show_context_btn = prefs.show_context_btn;
+        s.show_usage = prefs.show_usage;
         let config = fs::read_to_string(Path::new(&bridge_data_dir()).join("config.json"))
             .ok()
             .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok());
@@ -231,14 +248,11 @@ impl Sidebar {
     }
 
     pub fn set_active_tab(&mut self, tab: usize) {
-        let target = tab % 2;
-        if self.active_tab != target {
-            self.active_tab = target;
-            self.settings_menu = SettingsSubMenu::Main;
-            self.selected = 0;
-            self.scroll = 0;
-            self.rebuild_rows();
-        }
+        self.active_tab = tab;
+        self.settings_menu = SettingsSubMenu::Main;
+        self.selected = 0;
+        self.scroll = 0;
+        self.rebuild_rows();
     }
 
     pub fn open_submenu(&mut self, menu: SettingsSubMenu) {
@@ -252,7 +266,6 @@ impl Sidebar {
         self.rows.clear();
         match self.settings_menu {
             SettingsSubMenu::Main => {
-
                 self.rows.push(SidebarRow::NavPreferences);
                 self.rows.push(SidebarRow::NavModConfig);
                 self.rows.push(SidebarRow::NavAIPrefs);
@@ -270,11 +283,16 @@ impl Sidebar {
                     }
                     self.rows.push(SidebarRow::MoreSessions);
                 }
+
+                if self.usage.is_some() && self.show_usage {
+                    self.rows.push(SidebarRow::UsageCarousel);
+                }
             }
             SettingsSubMenu::Preferences => {
                 self.rows.push(SidebarRow::NavBack);
                 self.rows.push(SidebarRow::PrefFullConfig);
                 self.rows.push(SidebarRow::PrefYolo);
+                self.rows.push(SidebarRow::PrefShowUsage);
             }
             SettingsSubMenu::ModConfig => {
                 self.rows.push(SidebarRow::NavBack);
@@ -348,6 +366,79 @@ impl Sidebar {
         if let Ok(json) = serde_json::to_string_pretty(&file) {
             let _ = crate::ipc::atomic_write(&std::path::Path::new(&bridge_data_dir()).join("sessions.json"), &json);
         }
+    }
+
+    pub fn clean_all_sessions(&mut self, open_session_ids: &[String]) -> usize {
+        let before = self.sessions.len();
+        self.sessions.retain(|s| open_session_ids.contains(&s.id));
+        let mut count = before.saturating_sub(self.sessions.len());
+        self.rebuild_rows();
+        self.save_sessions();
+
+        let home = crate::ipc::home_dir();
+        if !home.as_os_str().is_empty() {
+            let proj_dir = home.join(".commandcode/projects").join(&self.project);
+            if let Ok(entries) = fs::read_dir(&proj_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    let is_open = path.file_stem()
+                        .and_then(|s| s.to_str())
+                        .map(|stem| open_session_ids.iter().any(|id| stem.starts_with(id)))
+                        .unwrap_or(false);
+                    if !is_open {
+                        if fs::remove_file(path).is_ok() {
+                            count += 1;
+                        }
+                    }
+                }
+            }
+        }
+        count
+    }
+
+    pub fn clean_old_hours(&mut self, hours: i64, open_session_ids: &[String]) -> usize {
+        let cutoff_ms = (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0))
+            - hours * 3600 * 1000;
+
+        let before = self.sessions.len();
+        self.sessions.retain(|s| s.last_at >= cutoff_ms || open_session_ids.contains(&s.id));
+        let mut count = before.saturating_sub(self.sessions.len());
+        self.rebuild_rows();
+        self.save_sessions();
+
+        let cutoff_time = std::time::SystemTime::now() - std::time::Duration::from_secs((hours * 3600) as u64);
+        let home = crate::ipc::home_dir();
+        if !home.as_os_str().is_empty() {
+            let proj_dir = home.join(".commandcode/projects").join(&self.project);
+            if let Ok(entries) = fs::read_dir(&proj_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    let is_open = path.file_stem()
+                        .and_then(|s| s.to_str())
+                        .map(|stem| open_session_ids.iter().any(|id| stem.starts_with(id)))
+                        .unwrap_or(false);
+                    if !is_open {
+                        if let Ok(meta) = entry.metadata() {
+                            if let Ok(mtime) = meta.modified() {
+                                if mtime < cutoff_time {
+                                    if fs::remove_file(path).is_ok() {
+                                        count += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        count
+    }
+
+    pub fn clean_old_sessions(&mut self, days: i64, open_session_ids: &[String]) -> usize {
+        self.clean_old_hours(days * 24, open_session_ids)
     }
 }
 

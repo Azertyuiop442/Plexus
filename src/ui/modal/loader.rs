@@ -30,13 +30,15 @@ pub fn load_modal(data_dir: &Path, mod_id: &str) -> Option<Modal> {
         .and_then(|p| p.as_str())
         .map(std::path::PathBuf::from);
 
+    let home_cfg = crate::ipc::home_dir().join(".commandcode/config.json");
     let config_json: serde_json::Value = match &persist_config {
         Some(p) => std::fs::read_to_string(p)
             .ok()
             .and_then(|raw| serde_json::from_str(&raw).ok())
             .unwrap_or(serde_json::json!({})),
-        None => std::fs::read_to_string(crate::ipc::ipc_path("config.json"))
+        None => std::fs::read_to_string(&home_cfg)
             .ok()
+            .or_else(|| std::fs::read_to_string(crate::ipc::ipc_path("config.json")).ok())
             .and_then(|raw| serde_json::from_str(&raw).ok())
             .unwrap_or(serde_json::json!({})),
     };

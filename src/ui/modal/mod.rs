@@ -9,7 +9,7 @@ pub mod render;
 #[allow(unused_imports)]
 pub use loader::load_modal;
 #[allow(unused_imports)]
-pub use model::{Modal, ModalRow, ModalStep, update_paired_effort_rows};
+pub use model::{Modal, ModalRow, ModalStep, is_reasoning_model, update_paired_effort_rows};
 #[allow(unused_imports)]
 pub use render::{
     dim_background, modal_choice_rows, modal_rect, modal_stack_areas, render_modal,

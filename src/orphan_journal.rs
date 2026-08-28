@@ -34,11 +34,15 @@ fn is_process_alive(pid: u32) -> bool {
 }
 
 fn terminate_process(pid: u32) {
+    let my_pid = current_ppid();
+    let my_ppid = unsafe { libc::getppid() as u32 };
+    if pid <= 1 || pid == my_pid || pid == my_ppid {
+        return;
+    }
     if !is_process_alive(pid) {
         return;
     }
     unsafe {
-
         libc::kill(pid as i32, libc::SIGTERM);
     }
 

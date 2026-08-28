@@ -24,6 +24,8 @@ mod selection;
 mod state;
 mod theme;
 mod ui;
+mod update;
+mod usage;
 
 use crate::mux_core::input::{handle_key, handle_mouse};
 use crate::mux_core::pane_ops::spawn_pane;
@@ -183,9 +185,13 @@ fn main() -> io::Result<()> {
         }
     }
 
+    crate::update::check_for_updates_background(state.events.clone());
+    crate::usage::spawn_usage_checker(state.events.clone());
+
     let mut last_sidebar_refresh = std::time::Instant::now();
     let mut last_mods_refresh = std::time::Instant::now();
     let mut last_picker_check = std::time::Instant::now();
+    let mut last_update_check = std::time::Instant::now();
     let mut last_saved_prefs = prefs.clone();
     let mut last_draw = std::time::Instant::now();
 
@@ -219,6 +225,27 @@ fn main() -> io::Result<()> {
                         }
                         state.dirty = true;
                     }
+                }
+                crate::mux_events::MuxEvent::UpdateAvailable { version } => {
+                    state.available_update = Some(version.clone());
+                    state.sidebar.available_update = Some(version);
+                    state.dirty = true;
+                }
+                crate::mux_events::MuxEvent::UpdateProgress { label, current, total } => {
+                    crate::mux_core::modals::open_update_progress_modal(&mut state, &label, current, total);
+                    state.dirty = true;
+                }
+                crate::mux_events::MuxEvent::UpdateCompleted { success, error } => {
+                    if success {
+                        crate::mux_core::input::reload_mux();
+                    } else if let Some(err) = error {
+                        crate::mux_core::modals::open_update_modal(&mut state, &format!("✗ Update failed: {err}"));
+                        state.dirty = true;
+                    }
+                }
+                crate::mux_events::MuxEvent::UsageUpdated(usage) => {
+                    state.sidebar.usage = Some(usage);
+                    state.dirty = true;
                 }
             }
             if t_drain.elapsed().as_millis() > 500 {
@@ -460,6 +487,7 @@ fn main() -> io::Result<()> {
                 ide_context: state.sidebar.ide_context,
                 show_cost_bar: state.sidebar.show_cost_bar,
                 show_context_btn: state.sidebar.show_context_btn,
+                show_usage: state.sidebar.show_usage,
                 sidebar_w: state.sidebar_w,
                 sidebar_open: state.sidebar_open,
             };
@@ -468,6 +496,11 @@ fn main() -> io::Result<()> {
                 last_saved_prefs = current;
             }
             last_sidebar_refresh = std::time::Instant::now();
+        }
+
+        if last_update_check.elapsed() >= std::time::Duration::from_secs(300) {
+            crate::update::check_for_updates_background(state.events.clone());
+            last_update_check = std::time::Instant::now();
         }
 
         {

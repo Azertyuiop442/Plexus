@@ -131,7 +131,11 @@ mod tests {
             ide_context: true,
             show_cost_bar: true,
             show_context_btn: true,
+            show_usage: true,
             live_blocks: Vec::new(),
+            available_update: None,
+            usage: None,
+            usage_tab: 0,
         };
         let mut state = AppState::new(sidebar);
         state.mods_data = crate::ui::mod_bridge::ModsData::default();
@@ -208,7 +212,11 @@ mod tests {
                 ide_context: true,
                 show_cost_bar: true,
                 show_context_btn: true,
+                show_usage: true,
                 live_blocks: Vec::new(),
+                available_update: None,
+                usage: None,
+                usage_tab: 0,
             };
             let mut state = AppState::new(sidebar);
             let (pane, reader) = match MuxPane::spawn(

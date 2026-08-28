@@ -1,12 +1,14 @@
 
 use std::sync::mpsc;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MuxEvent {
-
     PtyOutput { gen: u64, bytes: Vec<u8> },
-
     PaneExited { gen: u64 },
+    UpdateAvailable { version: String },
+    UpdateProgress { label: String, current: usize, total: usize },
+    UpdateCompleted { success: bool, error: Option<String> },
+    UsageUpdated(crate::usage::UsageData),
 }
 
 pub type MuxEventSender = mpsc::SyncSender<MuxEvent>;
