@@ -206,7 +206,10 @@ pub fn save_cached_usage(data: &UsageData) {
 }
 
 pub fn format_duration_from_now(reset_at_ms: u64) -> String {
-    let now = now_ms();
+    format_duration_from(reset_at_ms, now_ms())
+}
+
+pub fn format_duration_from(reset_at_ms: u64, now: u64) -> String {
     if reset_at_ms <= now {
         return "now".to_string();
     }
@@ -436,11 +439,11 @@ mod tests {
 
     #[test]
     fn duration_formatting_handles_past_and_future() {
-        let now = now_ms();
-        assert_eq!(format_duration_from_now(now.saturating_sub(1000)), "now");
-        assert_eq!(format_duration_from_now(now + 60_000 * 45), "45m");
-        assert_eq!(format_duration_from_now(now + 60_000 * 150), "2h 30m");
-        assert_eq!(format_duration_from_now(now + 60_000 * 1440 * 2 + 60_000 * 180), "2d 3h");
+        let now = 1_000_000_000u64;
+        assert_eq!(format_duration_from(now.saturating_sub(1000), now), "now");
+        assert_eq!(format_duration_from(now + 60_000 * 45, now), "45m");
+        assert_eq!(format_duration_from(now + 60_000 * 150, now), "2h 30m");
+        assert_eq!(format_duration_from(now + 60_000 * 1440 * 2 + 60_000 * 180, now), "2d 3h");
     }
 
     #[test]

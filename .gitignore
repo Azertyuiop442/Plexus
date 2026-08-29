@@ -4,11 +4,8 @@ tests/
 AGENTS.md
 scripts/
 *.html
-assets/*.html
-ISSUES_TRACKER.md
-issues.json
-.env
+*.log
+*.tmp
+.env*
 .DS_Store
 Thumbs.db
-
-MATHEMATICAL_FOUNDATIONS.md

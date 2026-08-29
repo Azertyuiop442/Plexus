@@ -59,20 +59,27 @@ cd "$DIR"
 echo "-> Compiling release binaries..."
 cargo build --release
 
-echo "-> Deploying to ~/.commandcode/bin/..."
-mkdir -p ~/.commandcode/bin ~/.local/bin
-
-install -m 755 target/release/cc-mux ~/.commandcode/bin/cc-mux
-ln -sf cc-mux ~/.commandcode/bin/plexus
-if [ -f target/release/cc-dashboard ]; then
-    install -m 755 target/release/cc-dashboard ~/.commandcode/bin/cc-dashboard
+if [[ "$OS" == "Darwin" ]]; then
+    xattr -c target/release/cc-mux 2>/dev/null || true
+    codesign -s - -f target/release/cc-mux 2>/dev/null || true
+    if [ -f target/release/cc-dashboard ]; then
+        xattr -c target/release/cc-dashboard 2>/dev/null || true
+        codesign -s - -f target/release/cc-dashboard 2>/dev/null || true
+    fi
 fi
 
-if [[ "$OS" == "Darwin" ]]; then
-    xattr -c ~/.commandcode/bin/plexus ~/.commandcode/bin/cc-mux ~/.commandcode/bin/cc-dashboard 2>/dev/null || true
-    codesign -s - -f ~/.commandcode/bin/plexus 2>/dev/null || true
-    codesign -s - -f ~/.commandcode/bin/cc-mux 2>/dev/null || true
-    codesign -s - -f ~/.commandcode/bin/cc-dashboard 2>/dev/null || true
+echo "-> Deploying atomically to ~/.commandcode/bin/..."
+mkdir -p ~/.commandcode/bin ~/.local/bin
+
+cp target/release/cc-mux ~/.commandcode/bin/.cc-mux.tmp.$$
+chmod 755 ~/.commandcode/bin/.cc-mux.tmp.$$
+mv -f ~/.commandcode/bin/.cc-mux.tmp.$$ ~/.commandcode/bin/cc-mux
+ln -sf cc-mux ~/.commandcode/bin/plexus
+
+if [ -f target/release/cc-dashboard ]; then
+    cp target/release/cc-dashboard ~/.commandcode/bin/.cc-dashboard.tmp.$$
+    chmod 755 ~/.commandcode/bin/.cc-dashboard.tmp.$$
+    mv -f ~/.commandcode/bin/.cc-dashboard.tmp.$$ ~/.commandcode/bin/cc-dashboard
 fi
 
 ln -sf ~/.commandcode/bin/cc-mux ~/.local/bin/plexus

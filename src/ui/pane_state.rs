@@ -64,6 +64,7 @@ pub struct PaneState {
     pub pane_count: usize,
 
     pub prompt_anchors: Vec<i32>,
+    pub auto_retry: crate::auto_retry::RetryTracker,
 }
 
 impl PaneState {
@@ -101,6 +102,7 @@ impl PaneState {
             gen: 0,
             pane_count: 1,
             prompt_anchors: Vec::new(),
+            auto_retry: crate::auto_retry::RetryTracker::default(),
         }
     }
 }

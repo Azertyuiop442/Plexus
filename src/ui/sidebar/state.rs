@@ -140,6 +140,7 @@ pub struct Sidebar {
     pub show_cost_bar: bool,
     pub show_context_btn: bool,
     pub show_usage: bool,
+    pub auto_retry_enabled: bool,
 
     pub live_blocks: Vec<LiveBlock>,
     pub available_update: Option<String>,
@@ -202,6 +203,7 @@ impl Sidebar {
             show_cost_bar: true,
             show_context_btn: true,
             show_usage: true,
+            auto_retry_enabled: true,
             live_blocks: Vec::new(),
             available_update: None,
             usage: crate::usage::load_cached_usage(),
@@ -215,6 +217,7 @@ impl Sidebar {
         s.show_cost_bar = prefs.show_cost_bar;
         s.show_context_btn = prefs.show_context_btn;
         s.show_usage = prefs.show_usage;
+        s.auto_retry_enabled = prefs.auto_retry.enabled;
         let config = fs::read_to_string(Path::new(&bridge_data_dir()).join("config.json"))
             .ok()
             .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok());
@@ -291,6 +294,7 @@ impl Sidebar {
             SettingsSubMenu::Preferences => {
                 self.rows.push(SidebarRow::NavBack);
                 self.rows.push(SidebarRow::PrefFullConfig);
+                self.rows.push(SidebarRow::PrefAutoRetry);
                 self.rows.push(SidebarRow::PrefYolo);
                 self.rows.push(SidebarRow::PrefShowUsage);
             }

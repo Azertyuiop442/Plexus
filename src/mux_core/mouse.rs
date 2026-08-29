@@ -640,6 +640,9 @@ pub fn handle_mouse(
                     SidebarRow::PrefFullConfig => {
                         open_full_config_modal(state);
                     }
+                    SidebarRow::PrefAutoRetry => {
+                        crate::ui::modal::open_auto_retry_modal(state);
+                    }
                     SidebarRow::PrefYolo => {
                         state.sidebar.yolo_mode = !state.sidebar.yolo_mode;
 

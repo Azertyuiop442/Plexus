@@ -106,6 +106,7 @@ pub enum SidebarRow {
     NavBack,
 
     PrefFullConfig,
+    PrefAutoRetry,
     PrefYolo,
     PrefShowUsage,
 

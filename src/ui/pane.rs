@@ -50,16 +50,24 @@ impl MuxPane {
         let mut best_score = -1i32;
         let is_prompt_line = |buf: &str| {
             let lower = buf.to_lowercase();
+            let trimmed = buf.trim_start();
             lower.contains("ask your question")
                 || lower.contains("? for shortcuts")
                 || lower.contains("what would you like to do")
-                || buf.trim_start().starts_with('❯')
+                || lower.contains("type \"continue\" to try again")
+                || lower.contains("type 'continue' to try again")
+                || trimmed.starts_with('❯')
+                || trimmed.starts_with('>')
+                || trimmed.starts_with('›')
+                || trimmed.starts_with('$')
+                || trimmed.starts_with('%')
         };
         let score_of = |buf: &str| -> i32 {
             let lower = buf.to_lowercase();
+            let trimmed = buf.trim_start();
             if lower.contains("ask your question") {
                 3
-            } else if buf.trim_start().starts_with('❯') {
+            } else if trimmed.starts_with('❯') || trimmed.starts_with('>') || trimmed.starts_with('›') {
                 2
             } else {
                 1
@@ -501,6 +509,99 @@ impl MuxPane {
         self.state.agent_state = self.state.agent_tracker.observe(observed);
         if self.state.agent_state != before {
             self.publish_blocked_status();
+        }
+        self.process_auto_retry();
+    }
+
+    pub fn process_auto_retry(&mut self) {
+        if self.state.exited {
+            return;
+        }
+
+        if self.state.agent_state == crate::agent_state::AgentState::Working
+            || self.is_busy()
+        {
+            if self.state.auto_retry.sent_for_current_attempt {
+                self.state.auto_retry.waiting_for_response = true;
+                self.state.auto_retry.next_retry_at = None;
+            }
+            return;
+        }
+
+        if !self.is_at_prompt() {
+            return;
+        }
+
+        let prefs = crate::prefs::Prefs::load().auto_retry;
+        if !prefs.enabled {
+            return;
+        }
+        let text = self.bottom_text(25);
+        if let Some((err_type, sig)) = crate::auto_retry::classify_error(&text, &prefs) {
+            let mut should_retry = false;
+            {
+                let tracker = &mut self.state.auto_retry;
+                if tracker.last_error_sig.as_deref() != Some(&sig) {
+                    tracker.last_error_sig = Some(sig);
+                    tracker.attempt_count = 1;
+                    tracker.active_error_label = Some(err_type.label().to_string());
+                    tracker.sent_for_current_attempt = false;
+                    tracker.waiting_for_response = false;
+                    let delay = crate::auto_retry::calculate_backoff(1, &prefs);
+                    tracker.next_retry_at = Some(std::time::Instant::now() + delay);
+                } else if !tracker.sent_for_current_attempt && !tracker.waiting_for_response {
+                    if let Some(target_time) = tracker.next_retry_at {
+                        if std::time::Instant::now() >= target_time {
+                            if prefs.max_retries == 0 || (tracker.attempt_count as i64) <= prefs.max_retries {
+                                should_retry = true;
+                                tracker.sent_for_current_attempt = true;
+                                tracker.waiting_for_response = true;
+                                tracker.next_retry_at = None;
+                            } else {
+                                tracker.next_retry_at = None;
+                            }
+                        }
+                    }
+                }
+            }
+            if should_retry {
+                let prompt = if prefs.prompt.trim().is_empty() {
+                    "continue".to_string()
+                } else {
+                    prefs.prompt.clone()
+                };
+                let bottom_few = self.bottom_text(3);
+                let trimmed_prompt = prompt.trim();
+                let already_typed = bottom_few
+                    .lines()
+                    .any(|l| l.trim().ends_with(trimmed_prompt));
+
+                let tx = self.input_tx.clone();
+                let text_to_send = if already_typed {
+                    None
+                } else {
+                    Some(trimmed_prompt.to_string())
+                };
+
+                std::thread::spawn(move || {
+                    if let Some(t) = text_to_send {
+                        let _ = tx.send(t.into_bytes());
+                        std::thread::sleep(std::time::Duration::from_millis(80));
+                    }
+                    let _ = tx.send(vec![b'\r']);
+                });
+                self.state.dirty = true;
+            }
+        } else {
+            let tracker = &mut self.state.auto_retry;
+            if tracker.last_error_sig.is_some() {
+                tracker.last_error_sig = None;
+                tracker.attempt_count = 0;
+                tracker.next_retry_at = None;
+                tracker.active_error_label = None;
+                tracker.sent_for_current_attempt = false;
+                tracker.waiting_for_response = false;
+            }
         }
     }
 

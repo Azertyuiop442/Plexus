@@ -26,6 +26,7 @@ mod theme;
 mod ui;
 mod update;
 mod usage;
+mod auto_retry;
 
 use crate::mux_core::input::{handle_key, handle_mouse};
 use crate::mux_core::pane_ops::spawn_pane;
@@ -480,17 +481,17 @@ fn main() -> io::Result<()> {
         if last_sidebar_refresh.elapsed() >= std::time::Duration::from_secs(5) {
             state.sidebar.refresh();
             state.dirty = true;
-            let current = Prefs {
-                show_banner: crate::ui::banner::is_banner_enabled(),
-                yolo_mode: state.sidebar.yolo_mode,
-                taste_learning: state.sidebar.taste_learning,
-                ide_context: state.sidebar.ide_context,
-                show_cost_bar: state.sidebar.show_cost_bar,
-                show_context_btn: state.sidebar.show_context_btn,
-                show_usage: state.sidebar.show_usage,
-                sidebar_w: state.sidebar_w,
-                sidebar_open: state.sidebar_open,
-            };
+            let mut current = Prefs::load();
+            current.show_banner = crate::ui::banner::is_banner_enabled();
+            current.yolo_mode = state.sidebar.yolo_mode;
+            current.taste_learning = state.sidebar.taste_learning;
+            current.ide_context = state.sidebar.ide_context;
+            current.show_cost_bar = state.sidebar.show_cost_bar;
+            current.show_context_btn = state.sidebar.show_context_btn;
+            current.show_usage = state.sidebar.show_usage;
+            current.sidebar_w = state.sidebar_w;
+            current.sidebar_open = state.sidebar_open;
+            current.auto_retry.enabled = state.sidebar.auto_retry_enabled;
             if current != last_saved_prefs {
                 current.save();
                 last_saved_prefs = current;

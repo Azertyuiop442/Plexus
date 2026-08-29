@@ -80,7 +80,14 @@ pub fn row_content_width(row: &ModalRow) -> u16 {
         ModalRow::InfoColored { text, .. } => text.clone(),
         ModalRow::Separator(t) => t.clone(),
         ModalRow::Progress { label, .. } => format!("{label}  0/0"),
-        ModalRow::Stepper { label, value, unit, .. } => format!("{label}  ‹ {value}{unit} ›"),
+        ModalRow::Stepper { label, value, unit, .. } => {
+            let val_str = if *value == 0 && unit.contains("tries") {
+                "Infinite (∞)".to_string()
+            } else {
+                format!("{value}{unit}")
+            };
+            format!("{label}  ‹ {val_str} ›")
+        }
         ModalRow::Table { headers, rows, .. } => {
             let cols = headers.iter().map(|h| width(h)).max().unwrap_or(0)
                 + rows
@@ -619,7 +626,11 @@ fn row_spans(
             unit,
             ..
         } => {
-            let val_str = format!("{value}{unit}");
+            let val_str = if *value == 0 && unit.contains("tries") {
+                "Infinite (∞)".to_string()
+            } else {
+                format!("{value}{unit}")
+            };
             let label_max = w.saturating_sub(width(&val_str) + 8);
             let label = truncate(label, label_max);
             let label_w = width(&label);

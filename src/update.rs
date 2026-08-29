@@ -34,15 +34,40 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
+fn local_dev_version() -> Option<String> {
+    let path = crate::ipc::home_dir().join(".commandcode/mods/cc-dashboard/Cargo.toml");
+    let raw = fs::read_to_string(path).ok()?;
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("version =") {
+            let ver = rest.trim().trim_matches('"').trim_matches('\'').trim();
+            if !ver.is_empty() {
+                return Some(ver.to_string());
+            }
+        }
+    }
+    None
+}
+
+pub fn current_version() -> String {
+    let bin_ver = env!("CARGO_PKG_VERSION");
+    if let Some(dev_ver) = local_dev_version() {
+        if !is_newer_version(bin_ver, &dev_ver) {
+            return dev_ver;
+        }
+    }
+    bin_ver.to_string()
+}
+
 fn read_cached_update() -> Option<String> {
     let path = cache_path();
     let raw = fs::read_to_string(path).ok()?;
     let json: serde_json::Value = serde_json::from_str(&raw).ok()?;
     let last_check = json.get("last_check").and_then(|v| v.as_u64()).unwrap_or(0);
-    let current_ver = env!("CARGO_PKG_VERSION");
+    let current_ver = current_version();
     if now_secs().saturating_sub(last_check) < CHECK_COOLDOWN_SECS {
         let latest = json.get("latest_version").and_then(|v| v.as_str())?;
-        if is_newer_version(latest, current_ver) {
+        if is_newer_version(latest, &current_ver) {
             return Some(latest.to_string());
         }
     }
@@ -54,10 +79,11 @@ fn write_cached_update(latest: &str) {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
+    let current_ver = current_version();
     let payload = serde_json::json!({
         "last_check": now_secs(),
         "latest_version": latest,
-        "current_version": env!("CARGO_PKG_VERSION")
+        "current_version": current_ver
     });
     let _ = fs::write(path, payload.to_string());
 }
@@ -144,14 +170,14 @@ pub fn check_for_updates_background(events: MuxEventSender) {
     }
 
     std::thread::spawn(move || {
-        let current = env!("CARGO_PKG_VERSION");
+        let current = current_version();
         if let Some(remote) = check_remote_version() {
             write_cached_update(&remote);
-            if is_newer_version(&remote, current) {
+            if is_newer_version(&remote, &current) {
                 let _ = events.send(MuxEvent::UpdateAvailable { version: remote });
             }
         } else {
-            write_cached_update(current);
+            write_cached_update(&current);
         }
     });
 }

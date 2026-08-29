@@ -1203,6 +1203,10 @@ pub fn sync_modal_toggles(state: &mut AppState) {
                 save_peak_alert(&modal.all_rows());
             }
             modal.save();
+            if modal.id == "auto_retry_config" {
+                let prefs = crate::prefs::Prefs::load();
+                state.sidebar.auto_retry_enabled = prefs.auto_retry.enabled;
+            }
         }
     }
 }

@@ -365,6 +365,28 @@ pub fn render_sidebar(
             ];
             card_row(frame, &mut y, inner, view, SidebarRow::PrefFullConfig, spans, sel, focused, &p);
 
+            let sel = selected_row == Some(SidebarRow::PrefAutoRetry);
+            let left = " Error Recovery".to_string();
+            let right = if sidebar.auto_retry_enabled { "ON ›" } else { "OFF ›" };
+            let left_w = crate::ui::text::width(&left);
+            let right_w = crate::ui::text::width(right);
+            let pad_count = width.saturating_sub(left_w + right_w + 1).max(2);
+            let spans = vec![
+                Span::styled(left, label_style(&p, sel)),
+                Span::raw(" ".repeat(pad_count)),
+                Span::styled(
+                    right,
+                    if sel {
+                        Style::default().fg(p.text).add_modifier(Modifier::BOLD)
+                    } else if sidebar.auto_retry_enabled {
+                        Style::default().fg(p.green)
+                    } else {
+                        Style::default().fg(p.overlay0)
+                    },
+                ),
+            ];
+            card_row(frame, &mut y, inner, view, SidebarRow::PrefAutoRetry, spans, sel, focused, &p);
+
             y += 1;
             if y < inner.bottom() {
                 frame.buffer_mut().set_line(

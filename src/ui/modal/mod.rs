@@ -17,6 +17,9 @@ pub use render::{
 };
 
 pub mod picker;
+pub mod auto_retry;
 #[allow(unused_imports)]
 pub use picker::{ModelPicker, PICKER_CATEGORIES};
+#[allow(unused_imports)]
+pub use auto_retry::open_auto_retry_modal;
 

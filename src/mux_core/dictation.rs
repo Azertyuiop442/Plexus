@@ -112,6 +112,7 @@ mod tests {
             show_cost_bar: true,
             show_context_btn: true,
             show_usage: true,
+            auto_retry_enabled: true,
             live_blocks: Vec::new(),
             available_update: None,
             usage: None,

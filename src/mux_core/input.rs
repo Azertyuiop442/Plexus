@@ -8,7 +8,7 @@ use super::modals::{
 };
 use super::pane_ops::{active_pane_size, spawn_pane};
 use crate::state::AppState;
-use crate::ui::modal::{Modal, ModalRow};
+use crate::ui::modal::{open_auto_retry_modal, Modal, ModalRow};
 use crate::ui::pane::key_to_bytes;
 use crate::ui::sidebar::{session_resumable, SettingsSubMenu, SidebarRow};
 
@@ -1180,6 +1180,10 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                 }
                 Some(SidebarRow::PrefFullConfig) => {
                     open_full_config_modal(state);
+                    return;
+                }
+                Some(SidebarRow::PrefAutoRetry) => {
+                    open_auto_retry_modal(state);
                     return;
                 }
                 Some(SidebarRow::ModConfig(idx)) => {
