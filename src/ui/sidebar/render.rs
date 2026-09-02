@@ -433,6 +433,7 @@ pub fn render_sidebar(
                 (SidebarRow::PrefSkillInjection, "Skill Injection", Some(sidebar.skill_injection)),
                 (SidebarRow::PrefYolo, "YOLO Mode", Some(sidebar.yolo_mode)),
                 (SidebarRow::PrefShowUsage, "Show Usage", Some(sidebar.show_usage)),
+                (SidebarRow::PrefSounds, "Sound Alerts", Some(sidebar.sound_notifications)),
             ] {
                 let sel = selected_row == Some(row_type);
                 let value_span = if let Some(on) = on {

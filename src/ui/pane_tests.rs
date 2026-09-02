@@ -366,5 +366,37 @@ mod tests {
         let offset_after = p.term.grid().display_offset();
         assert_eq!(offset_before, offset_after);
     }
+
+    #[test]
+    fn sound_alert_single_run_latch_prevents_duplicates() {
+        let Ok((pane, _reader)) = MuxPane::spawn("sleep 1", 40, 10) else {
+            return;
+        };
+        let mut p = pane.lock().unwrap_or_else(|e| e.into_inner());
+
+        p.write_input(b"echo test\n");
+        assert!(p.state.has_user_prompted);
+        assert!(!p.state.sound_played_for_run);
+
+        p.state.working_started_at =
+            Some(std::time::Instant::now() - std::time::Duration::from_millis(2000));
+        p.handle_sound_alerts(
+            crate::agent_state::AgentState::Working,
+            crate::agent_state::AgentState::Idle,
+        );
+
+        assert!(p.state.sound_played_for_run);
+        let first_sound_time = p.state.last_sound_at;
+        assert!(first_sound_time.is_some());
+
+        p.handle_sound_alerts(
+            crate::agent_state::AgentState::Working,
+            crate::agent_state::AgentState::Idle,
+        );
+        assert_eq!(p.state.last_sound_at, first_sound_time);
+
+        p.write_input(b"echo next\r");
+        assert!(!p.state.sound_played_for_run);
+    }
 }
 

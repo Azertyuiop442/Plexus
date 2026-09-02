@@ -19,10 +19,13 @@ pub use render::{
 pub mod picker;
 pub mod auto_retry;
 pub mod skills;
+pub mod sounds;
 #[allow(unused_imports)]
 pub use picker::{ModelPicker, PICKER_CATEGORIES};
 #[allow(unused_imports)]
 pub use auto_retry::open_auto_retry_modal;
 #[allow(unused_imports)]
 pub use skills::open_skills_modal;
+#[allow(unused_imports)]
+pub use sounds::open_sounds_modal;
 

@@ -111,6 +111,7 @@ pub enum SidebarRow {
     PrefSkillInjection,
     PrefYolo,
     PrefShowUsage,
+    PrefSounds,
 
     ModConfig(usize),
     LiveBlockOpen(usize),

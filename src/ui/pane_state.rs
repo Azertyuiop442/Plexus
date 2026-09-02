@@ -65,6 +65,9 @@ pub struct PaneState {
 
     pub prompt_anchors: Vec<i32>,
     pub auto_retry: crate::auto_retry::RetryTracker,
+    pub working_started_at: Option<std::time::Instant>,
+    pub sound_played_for_run: bool,
+    pub last_sound_at: Option<std::time::Instant>,
 }
 
 impl PaneState {
@@ -103,6 +106,9 @@ impl PaneState {
             pane_count: 1,
             prompt_anchors: Vec::new(),
             auto_retry: crate::auto_retry::RetryTracker::default(),
+            working_started_at: None,
+            sound_played_for_run: false,
+            last_sound_at: None,
         }
     }
 }

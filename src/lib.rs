@@ -16,4 +16,5 @@ pub mod update;
 pub mod usage;
 pub mod auto_retry;
 pub mod skills;
+pub mod sound;
 

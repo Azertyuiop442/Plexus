@@ -141,6 +141,7 @@ pub struct Sidebar {
     pub show_cost_bar: bool,
     pub show_context_btn: bool,
     pub show_usage: bool,
+    pub sound_notifications: bool,
     pub auto_retry_enabled: bool,
     pub skills_update_count: usize,
 
@@ -206,6 +207,7 @@ impl Sidebar {
             show_cost_bar: true,
             show_context_btn: true,
             show_usage: true,
+            sound_notifications: true,
             auto_retry_enabled: true,
             skills_update_count: 0,
             live_blocks: Vec::new(),
@@ -222,6 +224,7 @@ impl Sidebar {
         s.show_cost_bar = prefs.show_cost_bar;
         s.show_context_btn = prefs.show_context_btn;
         s.show_usage = prefs.show_usage;
+        s.sound_notifications = prefs.sounds.enabled;
         s.auto_retry_enabled = prefs.auto_retry.enabled;
         s.skills_update_count = crate::skills::count_updates();
         let config = fs::read_to_string(Path::new(&bridge_data_dir()).join("config.json"))
@@ -312,6 +315,7 @@ impl Sidebar {
                 self.rows.push(SidebarRow::PrefSkillInjection);
                 self.rows.push(SidebarRow::PrefYolo);
                 self.rows.push(SidebarRow::PrefShowUsage);
+                self.rows.push(SidebarRow::PrefSounds);
             }
             SettingsSubMenu::ModConfig => {
                 self.rows.push(SidebarRow::NavBack);

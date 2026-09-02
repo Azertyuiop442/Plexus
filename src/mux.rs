@@ -28,6 +28,7 @@ mod update;
 mod usage;
 mod auto_retry;
 mod skills;
+mod sound;
 
 use crate::mux_core::input::{handle_key, handle_mouse};
 use crate::mux_core::pane_ops::spawn_pane;

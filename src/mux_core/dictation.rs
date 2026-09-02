@@ -113,6 +113,7 @@ mod tests {
             show_cost_bar: true,
             show_context_btn: true,
             show_usage: true,
+            sound_notifications: true,
             auto_retry_enabled: true,
             skills_update_count: 0,
             live_blocks: Vec::new(),

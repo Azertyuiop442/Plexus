@@ -509,8 +509,62 @@ impl MuxPane {
         self.state.agent_state = self.state.agent_tracker.observe(observed);
         if self.state.agent_state != before {
             self.publish_blocked_status();
+            self.handle_sound_alerts(before, self.state.agent_state);
         }
         self.process_auto_retry();
+    }
+
+    pub(crate) fn handle_sound_alerts(
+        &mut self,
+        before: crate::agent_state::AgentState,
+        after: crate::agent_state::AgentState,
+    ) {
+        use crate::agent_state::AgentState;
+        if after == AgentState::Working {
+            self.state.working_started_at = Some(std::time::Instant::now());
+            self.state.sound_played_for_run = false;
+            return;
+        }
+
+        let sound_prefs = crate::prefs::Prefs::load().sounds;
+        if !sound_prefs.enabled {
+            return;
+        }
+
+        let now = std::time::Instant::now();
+        let cooldown_ok = self
+            .state
+            .last_sound_at
+            .map(|t| now.duration_since(t) >= std::time::Duration::from_millis(2500))
+            .unwrap_or(true);
+
+        if before == AgentState::Working && after == AgentState::Idle {
+            let worked_long_enough = self
+                .state
+                .working_started_at
+                .map(|t| now.duration_since(t) >= std::time::Duration::from_millis(1500))
+                .unwrap_or(false);
+
+            if (self.state.has_user_prompted || worked_long_enough)
+                && !self.state.sound_played_for_run
+                && cooldown_ok
+            {
+                self.state.sound_played_for_run = true;
+                self.state.last_sound_at = Some(now);
+                crate::sound::play_sound(
+                    crate::sound::SoundAlertKind::TaskCompleted,
+                    &sound_prefs,
+                );
+            }
+        } else if before == AgentState::Working && after == AgentState::Blocked {
+            if cooldown_ok {
+                self.state.last_sound_at = Some(now);
+                crate::sound::play_sound(
+                    crate::sound::SoundAlertKind::AgentBlocked,
+                    &sound_prefs,
+                );
+            }
+        }
     }
 
     pub fn process_auto_retry(&mut self) {
@@ -767,6 +821,7 @@ impl MuxPane {
         if has_newline {
             self.state.has_user_prompted = true;
             self.state.turns = self.state.turns.saturating_add(1);
+            self.state.sound_played_for_run = false;
         }
 
         let snaps = should_scroll_to_bottom(bytes)

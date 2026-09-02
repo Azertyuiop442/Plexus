@@ -1155,7 +1155,7 @@ dependencies = [
 
 [[package]]
 name = "plexus"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "alacritty_terminal",
  "crossterm",

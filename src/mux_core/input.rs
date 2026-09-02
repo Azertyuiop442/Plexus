@@ -738,6 +738,9 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                 } else if modal.id == "skills_config" {
                     handle_skills_modal_enter(state);
                     return;
+                } else if modal.id == "sounds_config" {
+                    crate::ui::modal::sounds::handle_sounds_modal_enter(state);
+                    return;
                 } else if modal.id.starts_with("list_") {
 
                     let mod_id = modal.id.trim_start_matches("list_").to_string();
@@ -1456,6 +1459,10 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                     crate::ui::modal::open_skills_modal(state);
                     return;
                 }
+                Some(SidebarRow::PrefSounds) => {
+                    crate::ui::modal::open_sounds_modal(state);
+                    return;
+                }
                 Some(SidebarRow::PrefSkillInjection) => {
                     let mut prefs = crate::prefs::Prefs::load();
                     prefs.skill_injection = !prefs.skill_injection;
@@ -1540,6 +1547,9 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                     state.sidebar.show_usage = !state.sidebar.show_usage;
                     state.sidebar.rebuild_rows();
                     state.dirty = true;
+                }
+                Some(SidebarRow::PrefSounds) => {
+                    crate::ui::modal::open_sounds_modal(state);
                 }
                 Some(SidebarRow::ModConfig(idx)) => {
                     open_mod_config_modal(state, idx);

@@ -107,6 +107,34 @@ impl Default for SkillsPrefs {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SoundPrefs {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_sound_completed")]
+    pub sound_completed: String,
+    #[serde(default = "default_sound_blocked")]
+    pub sound_blocked: String,
+}
+
+fn default_sound_completed() -> String {
+    "Glass".into()
+}
+
+fn default_sound_blocked() -> String {
+    "Sosumi".into()
+}
+
+impl Default for SoundPrefs {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            sound_completed: default_sound_completed(),
+            sound_blocked: default_sound_blocked(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Prefs {
     #[serde(default = "default_true")]
     pub show_banner: bool,
@@ -132,6 +160,8 @@ pub struct Prefs {
     pub auto_retry: AutoRetryPrefs,
     #[serde(default)]
     pub skills: SkillsPrefs,
+    #[serde(default)]
+    pub sounds: SoundPrefs,
 }
 
 fn default_true() -> bool {
@@ -156,6 +186,7 @@ impl Default for Prefs {
             sidebar_open: true,
             auto_retry: AutoRetryPrefs::default(),
             skills: SkillsPrefs::default(),
+            sounds: SoundPrefs::default(),
         }
     }
 }
@@ -248,6 +279,7 @@ impl Prefs {
             "ide_context": self.ide_context,
             "auto_retry": self.auto_retry,
             "skills": self.skills,
+            "sounds": self.sounds,
         });
         if let Ok(json) = serde_json::to_string_pretty(&local) {
             let _ = crate::ipc::atomic_write(&local_path, &json);
@@ -347,6 +379,11 @@ mod tests {
                 injection_enabled: true,
                 injection_prompt: "Apply the appropriate skill if applicable to the task.".into(),
             },
+            sounds: SoundPrefs {
+                enabled: false,
+                sound_completed: "Ping".into(),
+                sound_blocked: "Basso".into(),
+            },
         };
         p.save();
 
@@ -361,6 +398,7 @@ mod tests {
         assert_eq!(loaded.taste_learning, p.taste_learning);
         assert_eq!(loaded.ide_context, p.ide_context);
         assert_eq!(loaded.auto_retry, p.auto_retry);
+        assert_eq!(loaded.sounds, p.sounds);
         assert_eq!(loaded.skills, p.skills);
     }
 
@@ -443,9 +481,32 @@ mod tests {
 
         let loaded = Prefs::load();
         assert_eq!(
-            loaded.skill_injection, false,
-            "missing skill_injection in JSON must default to false (safe)"
+            loaded.skill_injection, false
         );
+    }
+
+    #[test]
+    fn sound_prefs_persists_through_save_load() {
+        let _guard = crate::ipc::HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _home = test_home("sound_prefs_roundtrip");
+
+        let mut p = Prefs::default();
+        p.sounds.enabled = false;
+        p.sounds.sound_completed = "Ping".into();
+        p.sounds.sound_blocked = "Basso".into();
+        p.save();
+
+        let raw = fs::read_to_string(Prefs::local_path().unwrap()).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(
+            v.get("sounds").and_then(|s| s.get("enabled")).and_then(|x| x.as_bool()),
+            Some(false)
+        );
+
+        let loaded = Prefs::load();
+        assert_eq!(loaded.sounds.enabled, false);
+        assert_eq!(loaded.sounds.sound_completed, "Ping");
+        assert_eq!(loaded.sounds.sound_blocked, "Basso");
     }
 }
 

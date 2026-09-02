@@ -670,6 +670,9 @@ pub fn handle_mouse(
                         state.sidebar.rebuild_rows();
                         state.dirty = true;
                     }
+                    SidebarRow::PrefSounds => {
+                        crate::ui::modal::open_sounds_modal(state);
+                    }
                     SidebarRow::ModConfig(idx) => {
                         open_mod_config_modal(state, idx);
                     }

@@ -1232,6 +1232,10 @@ pub fn sync_modal_toggles(state: &mut AppState) {
                 let prefs = crate::prefs::Prefs::load();
                 state.sidebar.auto_retry_enabled = prefs.auto_retry.enabled;
             }
+            if modal.id == "sounds_config" {
+                let prefs = crate::prefs::Prefs::load();
+                state.sidebar.sound_notifications = prefs.sounds.enabled;
+            }
         }
     }
 }
