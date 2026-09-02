@@ -100,6 +100,28 @@ pub fn copy_to_clipboard(text: &str) {
     });
 }
 
+pub fn read_clipboard() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("pbpaste")
+            .output()
+            .ok()
+            .and_then(|out| if out.status.success() { String::from_utf8(out.stdout).ok() } else { None })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        std::process::Command::new("wl-paste")
+            .output()
+            .or_else(|_| {
+                std::process::Command::new("xclip")
+                    .args(["-selection", "clipboard", "-o"])
+                    .output()
+            })
+            .ok()
+            .and_then(|out| if out.status.success() { String::from_utf8(out.stdout).ok() } else { None })
+    }
+}
+
 pub fn reload_mux() {
     use std::os::unix::process::CommandExt;
 

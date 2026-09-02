@@ -9,6 +9,17 @@ pub enum MuxEvent {
     UpdateProgress { label: String, current: usize, total: usize },
     UpdateCompleted { success: bool, error: Option<String> },
     UsageUpdated(crate::usage::UsageData),
+    SkillsUpdated { vendors: Vec<crate::skills::VendorStatus> },
+    SkillsUpdateProgress {
+        done: usize,
+        total: usize,
+        current: String,
+        last_result: Option<String>,
+    },
+    SkillsUpdateDone {
+        ok: usize,
+        failed: usize,
+    },
 }
 
 pub type MuxEventSender = mpsc::SyncSender<MuxEvent>;

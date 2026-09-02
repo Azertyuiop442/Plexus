@@ -13,13 +13,16 @@ pub use model::{Modal, ModalRow, ModalStep, is_reasoning_model, update_paired_ef
 #[allow(unused_imports)]
 pub use render::{
     dim_background, modal_choice_rows, modal_rect, modal_stack_areas, render_modal,
-    row_content_width,
+    row_content_width, row_wrapped_lines,
 };
 
 pub mod picker;
 pub mod auto_retry;
+pub mod skills;
 #[allow(unused_imports)]
 pub use picker::{ModelPicker, PICKER_CATEGORIES};
 #[allow(unused_imports)]
 pub use auto_retry::open_auto_retry_modal;
+#[allow(unused_imports)]
+pub use skills::open_skills_modal;
 

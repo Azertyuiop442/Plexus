@@ -107,6 +107,8 @@ pub enum SidebarRow {
 
     PrefFullConfig,
     PrefAutoRetry,
+    PrefSkills,
+    PrefSkillInjection,
     PrefYolo,
     PrefShowUsage,
 

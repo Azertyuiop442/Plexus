@@ -762,14 +762,15 @@ impl MuxPane {
         }
     }
 
-        pub fn write_input(&mut self, bytes: &[u8]) {
-        if bytes.contains(&b'\r') {
+    pub fn write_input(&mut self, bytes: &[u8]) {
+        let has_newline = bytes.contains(&b'\r') || bytes.contains(&b'\n');
+        if has_newline {
             self.state.has_user_prompted = true;
             self.state.turns = self.state.turns.saturating_add(1);
         }
 
         let snaps = should_scroll_to_bottom(bytes)
-            && (bytes.contains(&b'\r')
+            && (has_newline
                 || bytes.first() == Some(&b'/')
                 || self
                     .state
@@ -779,8 +780,7 @@ impl MuxPane {
                     })
                     .unwrap_or(true));
         if snaps {
-
-            if bytes.contains(&b'\r') && self.state.has_user_prompted {
+            if has_newline && self.state.has_user_prompted {
                 let cursor = self.term.grid().cursor.point;
                 let anchor = cursor.line.0 - self.term.grid().display_offset() as i32;
                 self.state.prompt_anchors.push(anchor);

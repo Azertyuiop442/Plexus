@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Azertyuiop442/Plexus/releases"><img src="https://shieldcn.dev/badge/plexus-v0.1.3-24837b.svg?logo=rust&variant=outline" alt="Plexus v0.1.3"/></a>
+  <a href="https://github.com/Azertyuiop442/Plexus/releases"><img src="https://shieldcn.dev/badge/plexus-v0.1.4-24837b.svg?logo=rust&variant=outline" alt="Plexus v0.1.4"/></a>
   <a href="https://github.com/Azertyuiop442/Plexus"><img src="https://shieldcn.dev/github/stars/Azertyuiop442/Plexus.svg?variant=outline" alt="GitHub Stars"/></a>
   <a href="LICENSE.md"><img src="https://shieldcn.dev/badge/license-Fair_%26_Community.svg?variant=outline" alt="License"/></a>
 </p>
@@ -50,6 +50,13 @@ curl -fsSL https://raw.githubusercontent.com/Azertyuiop442/Plexus/public/install
 - **Windows (PowerShell)**:
 ```powershell
 irm https://raw.githubusercontent.com/Azertyuiop442/Plexus/public/install.ps1 | iex
+```
+
+### Upgrading from v0.1.3
+
+To upgrade to v0.1.4 and activate the self-pulling update engine, re-run the one-command installer above or run:
+```bash
+git -C ~/.commandcode/mods/cc-dashboard pull --ff-only origin public && bash ~/.commandcode/mods/cc-dashboard/install.sh
 ```
 
 ### Manual Build

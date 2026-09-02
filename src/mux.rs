@@ -27,6 +27,7 @@ mod ui;
 mod update;
 mod usage;
 mod auto_retry;
+mod skills;
 
 use crate::mux_core::input::{handle_key, handle_mouse};
 use crate::mux_core::pane_ops::spawn_pane;
@@ -188,6 +189,7 @@ fn main() -> io::Result<()> {
 
     crate::update::check_for_updates_background(state.events.clone());
     crate::usage::spawn_usage_checker(state.events.clone());
+    crate::skills::check_all_background(state.events.clone());
 
     let mut last_sidebar_refresh = std::time::Instant::now();
     let mut last_mods_refresh = std::time::Instant::now();
@@ -246,6 +248,51 @@ fn main() -> io::Result<()> {
                 }
                 crate::mux_events::MuxEvent::UsageUpdated(usage) => {
                     state.sidebar.usage = Some(usage);
+                    state.dirty = true;
+                }
+                crate::mux_events::MuxEvent::SkillsUpdated { vendors } => {
+                    let count = vendors.iter().filter(|v| v.is_stale()).count();
+                    state.sidebar.set_skills_update_count(count);
+                    state.dirty = true;
+                }
+                crate::mux_events::MuxEvent::SkillsUpdateProgress {
+                    done,
+                    total,
+                    current,
+                    last_result,
+                } => {
+                    if let Some(upd) = state.skills_view.updating.as_mut() {
+                        upd.done = done;
+                        upd.total = total;
+                        upd.current = current;
+                        upd.last_result = last_result;
+                    } else {
+                        state.skills_view.updating = Some(crate::state::SkillsUpdateProgress {
+                            done,
+                            total,
+                            current,
+                            last_result,
+                            started_at_ms: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_millis() as u64)
+                                .unwrap_or(0),
+                        });
+                    }
+                    if crate::ui::modal::skills::is_skills_modal(&state)
+                        && crate::ui::modal::skills::current_step(&state) == 1
+                    {
+                        crate::ui::modal::open_skills_modal(&mut state);
+                    }
+                    state.dirty = true;
+                }
+                crate::mux_events::MuxEvent::SkillsUpdateDone { ok, failed } => {
+                    state.skills_view.updating = None;
+                    state.skills_view.last_update_summary =
+                        Some(format!("{ok} updated, {failed} failed"));
+                    crate::skills::check_all_background(state.events.clone());
+                    if crate::ui::modal::skills::is_skills_modal(&state) {
+                        crate::ui::modal::open_skills_modal(&mut state);
+                    }
                     state.dirty = true;
                 }
             }
@@ -697,10 +744,7 @@ fn main() -> io::Result<()> {
                     input_errors = 0;
                     state.dirty = true;
                     if !text.is_empty() {
-                        if let Some(pane) = state.panes.get(state.active) {
-                            let mut p = pane.lock().unwrap_or_else(|e| e.into_inner());
-                            p.write_paste(&text);
-                        }
+                        crate::mux_core::input::handle_paste(&mut state, &text);
                     }
                 }
                 Ok(Event::Resize(width, height)) => {

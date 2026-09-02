@@ -387,6 +387,34 @@ pub fn render_sidebar(
             ];
             card_row(frame, &mut y, inner, view, SidebarRow::PrefAutoRetry, spans, sel, focused, &p);
 
+            let sel = selected_row == Some(SidebarRow::PrefSkills);
+            let left = " Skills".to_string();
+            let right = if sidebar.skills_update_count > 0 {
+                let n = sidebar.skills_update_count;
+                let noun = if n == 1 { "update" } else { "updates" };
+                format!("+{n} {noun} ›")
+            } else {
+                "manage ›".to_string()
+            };
+            let left_w = crate::ui::text::width(&left);
+            let right_w = crate::ui::text::width(&right);
+            let pad_count = width.saturating_sub(left_w + right_w + 1).max(2);
+            let count = sidebar.skills_update_count;
+            let right_color = if count > 0 { p.yellow } else { p.overlay0 };
+            let spans = vec![
+                Span::styled(left, label_style(&p, sel)),
+                Span::raw(" ".repeat(pad_count)),
+                Span::styled(
+                    right,
+                    if sel {
+                        Style::default().fg(p.text).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(right_color)
+                    },
+                ),
+            ];
+            card_row(frame, &mut y, inner, view, SidebarRow::PrefSkills, spans, sel, focused, &p);
+
             y += 1;
             if y < inner.bottom() {
                 frame.buffer_mut().set_line(
@@ -402,6 +430,7 @@ pub fn render_sidebar(
             }
 
             for (row_type, label, on) in [
+                (SidebarRow::PrefSkillInjection, "Skill Injection", Some(sidebar.skill_injection)),
                 (SidebarRow::PrefYolo, "YOLO Mode", Some(sidebar.yolo_mode)),
                 (SidebarRow::PrefShowUsage, "Show Usage", Some(sidebar.show_usage)),
             ] {

@@ -221,6 +221,11 @@ pub fn perform_update_with_events(events: MuxEventSender) {
         });
 
         let status = if install_sh.exists() {
+            let repo_dir = home.join(".commandcode/mods/cc-dashboard");
+            let _ = Command::new("git")
+                .current_dir(&repo_dir)
+                .args(["pull", "--ff-only", "origin", "public"])
+                .output();
             Command::new("bash")
                 .arg(install_sh)
                 .stdout(std::process::Stdio::from(log_file))

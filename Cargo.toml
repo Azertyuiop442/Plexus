@@ -1,6 +1,6 @@
 [package]
 name = "plexus"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 description = "Lightweight native terminal multiplexer and live action dock in Rust"
 authors = ["442"]

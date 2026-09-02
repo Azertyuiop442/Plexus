@@ -1,6 +1,12 @@
 
 use std::path::{Path, PathBuf};
 
+#[cfg(test)]
+use std::sync::Mutex;
+
+#[cfg(test)]
+pub static HOME_LOCK: Mutex<()> = Mutex::new(());
+
 pub fn home_dir() -> PathBuf {
     std::env::var("HOME").map(PathBuf::from).unwrap_or_default()
 }

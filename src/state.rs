@@ -13,6 +13,23 @@ pub struct PickerState {
     pub picker: ModelPicker,
 }
 
+#[derive(Debug, Default, Clone)]
+pub struct SkillsView {
+    pub path: Vec<String>,
+    pub selected_file: Option<String>,
+    pub updating: Option<SkillsUpdateProgress>,
+    pub last_update_summary: Option<String>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SkillsUpdateProgress {
+    pub total: usize,
+    pub done: usize,
+    pub current: String,
+    pub last_result: Option<String>,
+    pub started_at_ms: u64,
+}
+
 pub struct AppState {
     pub panes: Vec<Arc<Mutex<MuxPane>>>,
     pub active: usize,
@@ -76,6 +93,8 @@ pub struct AppState {
     pub resizing_panel: bool,
 
     pub resizing_sidebar: bool,
+
+    pub skills_view: SkillsView,
 }
 
 pub const PANEL_SIDEBAR_MAX: u16 = 60;
@@ -134,6 +153,7 @@ impl AppState {
             panel_sidebar_w: 25,
             resizing_panel: false,
             resizing_sidebar: false,
+            skills_view: SkillsView::default(),
         }
     }
 

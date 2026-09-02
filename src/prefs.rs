@@ -76,11 +76,44 @@ impl Default for AutoRetryPrefs {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SkillsPrefs {
+    #[serde(default = "default_true")]
+    pub auto_update_check: bool,
+    #[serde(default = "default_skills_cooldown")]
+    pub check_cooldown_secs: u64,
+    #[serde(default)]
+    pub injection_enabled: bool,
+    #[serde(default = "default_skills_injection_prompt")]
+    pub injection_prompt: String,
+}
+
+fn default_skills_injection_prompt() -> String {
+    "Apply the appropriate skill if applicable to the task.".into()
+}
+
+fn default_skills_cooldown() -> u64 {
+    300
+}
+
+impl Default for SkillsPrefs {
+    fn default() -> Self {
+        Self {
+            auto_update_check: true,
+            check_cooldown_secs: 300,
+            injection_enabled: false,
+            injection_prompt: default_skills_injection_prompt(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Prefs {
     #[serde(default = "default_true")]
     pub show_banner: bool,
     #[serde(default)]
     pub yolo_mode: bool,
+    #[serde(default)]
+    pub skill_injection: bool,
     #[serde(default = "default_true")]
     pub taste_learning: bool,
     #[serde(default = "default_true")]
@@ -97,6 +130,8 @@ pub struct Prefs {
     pub sidebar_open: bool,
     #[serde(default)]
     pub auto_retry: AutoRetryPrefs,
+    #[serde(default)]
+    pub skills: SkillsPrefs,
 }
 
 fn default_true() -> bool {
@@ -111,6 +146,7 @@ impl Default for Prefs {
         Self {
             show_banner: true,
             yolo_mode: false,
+            skill_injection: false,
             taste_learning: true,
             ide_context: true,
             show_cost_bar: true,
@@ -119,6 +155,7 @@ impl Default for Prefs {
             sidebar_w: 25,
             sidebar_open: true,
             auto_retry: AutoRetryPrefs::default(),
+            skills: SkillsPrefs::default(),
         }
     }
 }
@@ -162,6 +199,14 @@ impl Prefs {
             .and_then(|raw| serde_json::from_str(&raw).ok())
             .unwrap_or_default();
 
+        if let Some(raw) = fs::read_to_string(&local_path).ok() {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+                if let Some(b) = v.get("skill_injection").and_then(|x| x.as_bool()) {
+                    prefs.skill_injection = b;
+                }
+            }
+        }
+
         let shared: Option<serde_json::Value> = fs::read_to_string(&shared_path)
             .ok()
             .and_then(|raw| serde_json::from_str(&raw).ok());
@@ -198,9 +243,11 @@ impl Prefs {
             "sidebar_w": self.sidebar_w,
             "sidebar_open": self.sidebar_open,
             "yolo_mode": self.yolo_mode,
+            "skill_injection": self.skill_injection,
             "taste_learning": self.taste_learning,
             "ide_context": self.ide_context,
             "auto_retry": self.auto_retry,
+            "skills": self.skills,
         });
         if let Ok(json) = serde_json::to_string_pretty(&local) {
             let _ = crate::ipc::atomic_write(&local_path, &json);
@@ -223,28 +270,54 @@ impl Prefs {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, OnceLock};
+    use std::path::{Path, PathBuf};
 
-    static HOME_LOCK: Mutex<()> = Mutex::new(());
-    static TMP_HOME: OnceLock<String> = OnceLock::new();
+    struct TestHome {
+        orig: Option<std::ffi::OsString>,
+        path: PathBuf,
+    }
 
-    fn test_home(key: &str) -> &'static str {
-        TMP_HOME.get_or_init(|| {
-            let dir = std::env::temp_dir().join(format!("cc-prefs-{key}-{}", std::process::id()));
-            let _ = fs::remove_dir_all(&dir);
-            std::fs::create_dir_all(&dir).unwrap();
-            dir.to_str().unwrap().to_string()
-        })
+    impl std::ops::Deref for TestHome {
+        type Target = Path;
+        fn deref(&self) -> &Self::Target {
+            &self.path
+        }
+    }
+
+    impl AsRef<Path> for TestHome {
+        fn as_ref(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TestHome {
+        fn drop(&mut self) {
+            if let Some(ref o) = self.orig {
+                std::env::set_var("HOME", o);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn test_home(key: &str) -> TestHome {
+        let orig = std::env::var_os("HOME");
+        let path = std::env::temp_dir().join(format!("cc-prefs-{key}-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let _ = fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path).unwrap();
+        std::env::set_var("HOME", &path);
+        TestHome { orig, path }
     }
 
     #[test]
     fn prefs_roundtrip() {
-        let _guard = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = test_home("roundtrip");
-        std::env::set_var("HOME", dir);
+        let _guard = crate::ipc::HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _home = test_home("roundtrip");
         let p = Prefs {
             show_banner: false,
             yolo_mode: true,
+            skill_injection: true,
             taste_learning: false,
             ide_context: true,
             show_cost_bar: false,
@@ -268,6 +341,12 @@ mod tests {
                 show_countdown: false,
                 notify_on_failure: true,
             },
+            skills: SkillsPrefs {
+                auto_update_check: false,
+                check_cooldown_secs: 60,
+                injection_enabled: true,
+                injection_prompt: "Apply the appropriate skill if applicable to the task.".into(),
+            },
         };
         p.save();
 
@@ -282,15 +361,14 @@ mod tests {
         assert_eq!(loaded.taste_learning, p.taste_learning);
         assert_eq!(loaded.ide_context, p.ide_context);
         assert_eq!(loaded.auto_retry, p.auto_retry);
-        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(loaded.skills, p.skills);
     }
 
     #[test]
     fn shared_keys_win_and_config_is_not_clobbered() {
-        let _guard = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = test_home("shared");
-        std::env::set_var("HOME", dir);
-        let cfg = std::path::Path::new(dir).join(".commandcode/config.json");
+        let _guard = crate::ipc::HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let home = test_home("shared");
+        let cfg = home.join(".commandcode/config.json");
         fs::create_dir_all(cfg.parent().unwrap()).unwrap();
 
         fs::write(
@@ -308,12 +386,11 @@ mod tests {
         assert_eq!(after["model"], "x");
         assert_eq!(after["theme"], "dark");
         assert_eq!(after["tasteLearning"], true);
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn load_without_home_uses_defaults() {
-        let _guard = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::ipc::HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         let old = std::env::var("HOME").ok();
         std::env::remove_var("HOME");
@@ -323,6 +400,52 @@ mod tests {
         if let Some(h) = old {
             std::env::set_var("HOME", h);
         }
+    }
+
+    #[test]
+    fn skill_injection_persists_through_save_load() {
+        let _guard = crate::ipc::HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _home = test_home("skill_inj_roundtrip");
+
+        let mut p = Prefs::default();
+        p.skill_injection = true;
+        p.save();
+
+        let raw = fs::read_to_string(Prefs::local_path().unwrap()).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(
+            v.get("skill_injection").and_then(|x| x.as_bool()),
+            Some(true),
+            "skill_injection must be written by save()"
+        );
+
+        let loaded = Prefs::load();
+        assert_eq!(loaded.skill_injection, true);
+    }
+
+    #[test]
+    fn skill_injection_defaults_to_false_when_missing() {
+        let _guard = crate::ipc::HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let home = test_home("skill_inj_default");
+        let prefs_dir = home.join(".commandcode");
+        fs::create_dir_all(&prefs_dir).unwrap();
+        let legacy = serde_json::json!({
+            "skills": {
+                "injection_enabled": true,
+                "injection_prompt": "Apply the appropriate skill if applicable to the task.",
+            }
+        });
+        fs::write(
+            prefs_dir.join("cc-dashboard-prefs.json"),
+            serde_json::to_string_pretty(&legacy).unwrap(),
+        )
+        .unwrap();
+
+        let loaded = Prefs::load();
+        assert_eq!(
+            loaded.skill_injection, false,
+            "missing skill_injection in JSON must default to false (safe)"
+        );
     }
 }
 

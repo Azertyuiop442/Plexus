@@ -68,6 +68,7 @@ pub fn modal_stack_areas(
 pub fn row_content_width(row: &ModalRow) -> u16 {
     let text = match row {
         ModalRow::Toggle { label, .. } => label.clone(),
+        ModalRow::Nav { label, .. } => label.clone(),
         ModalRow::Choice { label, options, .. } => {
             let cur = options
                 .get(options.len().saturating_sub(1))
@@ -553,7 +554,7 @@ fn role_color(p: &Palette, color: &str) -> Style {
     }
 }
 
-fn row_wrapped_lines(row: &ModalRow, w: usize) -> u16 {
+pub fn row_wrapped_lines(row: &ModalRow, w: usize) -> u16 {
     let w = w.max(10);
     let count = |text: &str| -> u16 {
 
@@ -575,6 +576,7 @@ fn row_wrapped_lines(row: &ModalRow, w: usize) -> u16 {
     match row {
         ModalRow::Info(t) => count(t),
         ModalRow::InfoColored { text, .. } => count(text),
+        ModalRow::Nav { label, .. } => count(label),
         ModalRow::Separator(t) => count(t),
         ModalRow::Section { title, .. } => count(title),
         ModalRow::TextInput { label, value, .. } => count(&format!("{label}: {value}")),
@@ -598,6 +600,15 @@ fn row_spans(
 ) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     match row {
+        ModalRow::Nav { label, color, .. } => {
+            let fg = color_from_name(p, color);
+            let label_max = w.saturating_sub(2);
+            let label = truncate(label, label_max);
+            spans.push(Span::styled(
+                label,
+                Style::default().fg(fg).add_modifier(Modifier::BOLD),
+            ));
+        }
         ModalRow::Toggle { label, enabled, .. } => {
             let (glyph, fg) = if *enabled {
                 ("✓", p.green)

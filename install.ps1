@@ -19,8 +19,23 @@ if (-not (Get-Command "cargo" -ErrorAction SilentlyContinue)) {
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","User") + ";" + [System.Environment]::GetEnvironmentVariable("Path","Machine")
 }
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-Set-Location $ScriptDir
+$InstallDir = Join-Path $HOME ".commandcode\mods\cc-dashboard"
+if ((Test-Path ".\Cargo.toml") -and (Test-Path ".\src\mux.rs")) {
+    $WorkDir = (Get-Location).Path
+} elseif (Test-Path (Join-Path $InstallDir ".git")) {
+    Write-Host "-> Pulling latest release in $InstallDir..." -ForegroundColor Yellow
+    git -C $InstallDir fetch --quiet origin public 2>$null
+    git -C $InstallDir checkout --quiet public 2>$null
+    git -C $InstallDir pull --ff-only origin public 2>$null
+    $WorkDir = $InstallDir
+} else {
+    Write-Host "-> Cloning Plexus into $InstallDir..." -ForegroundColor Yellow
+    $ParentDir = Split-Path -Parent $InstallDir
+    if (-not (Test-Path $ParentDir)) { New-Item -ItemType Directory -Path $ParentDir -Force | Out-Null }
+    git clone --depth 1 -b public https://github.com/Azertyuiop442/Plexus.git $InstallDir
+    $WorkDir = $InstallDir
+}
+Set-Location $WorkDir
 
 Write-Host "-> Compiling release binaries..." -ForegroundColor Yellow
 cargo build --release

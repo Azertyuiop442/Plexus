@@ -10,6 +10,12 @@ pub enum ModalRow {
         enabled: bool,
     },
 
+    Nav {
+        key: String,
+        label: String,
+        color: String,
+    },
+
     Choice {
         key: String,
         label: String,
@@ -68,6 +74,7 @@ impl ModalRow {
         matches!(
             self,
             ModalRow::Toggle { .. }
+                | ModalRow::Nav { .. }
                 | ModalRow::Choice { .. }
                 | ModalRow::Stepper { .. }
                 | ModalRow::TextInput { .. }
@@ -374,6 +381,7 @@ impl Modal {
                 *value = next;
                 self.dirty = true;
             }
+            ModalRow::Nav { .. } => return true,
             ModalRow::TextInput { .. }
             | ModalRow::Info(_)
             | ModalRow::InfoColored { .. }

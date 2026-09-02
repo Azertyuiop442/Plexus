@@ -16,7 +16,238 @@ pub use super::mouse::{handle_mouse, handle_scroll_accum};
 #[allow(unused_imports)]
 pub use super::mouse::build_selected_row;
 pub use super::dictation::flush_dictation;
-pub use super::nav::{change_pane_cwd, reload_mux, shell_quote};
+pub use super::nav::{change_pane_cwd, read_clipboard, reload_mux, shell_quote};
+
+fn handle_skills_modal_enter(state: &mut AppState) {
+    if !crate::ui::modal::skills::is_skills_modal(state) {
+        return;
+    }
+    let step = crate::ui::modal::skills::current_step(state);
+    let modal = state.active_modal.as_ref().expect("skills modal present");
+    let in_commands = modal.selected_is_command();
+    let cmd_idx = modal.selected.saturating_sub(modal.rows.len());
+    let cmd_name = modal.commands.get(cmd_idx).map(|(n, _)| n.clone());
+
+    if in_commands {
+        match cmd_name.as_deref() {
+            Some("back") => handle_skills_back(state),
+            Some("refresh") => {
+                crate::skills::check_all_background(state.events.clone());
+                crate::ui::modal::open_skills_modal(state);
+            }
+            Some("close") | _ => {
+                state.active_modal = None;
+            }
+        }
+        return;
+    }
+
+    let selected_idx = modal.selected;
+    let key = modal.rows.get(selected_idx).and_then(row_key);
+    let key = match key {
+        Some(k) => k,
+        None => return,
+    };
+
+    match step {
+        0 => handle_skills_browse(state, &key),
+        1 => handle_skills_tracker(state, &key),
+        2 => handle_skills_sources(state, &key),
+        3 => handle_skills_install(state, &key),
+        _ => {}
+    }
+}
+
+fn row_key(row: &crate::ui::modal::model::ModalRow) -> Option<String> {
+    match row {
+        crate::ui::modal::model::ModalRow::Toggle { key, .. } => Some(key.clone()),
+        crate::ui::modal::model::ModalRow::Nav { key, .. } => Some(key.clone()),
+        crate::ui::modal::model::ModalRow::TextInput { key, .. } => Some(key.clone()),
+        crate::ui::modal::model::ModalRow::Stepper { key, .. } => Some(key.clone()),
+        crate::ui::modal::model::ModalRow::Choice { key, .. } => Some(key.clone()),
+        _ => None,
+    }
+}
+
+fn handle_skills_back(state: &mut AppState) {
+    use crate::ui::modal::skills as sm;
+    let step = sm::current_step(state);
+    if step == 0 && !state.skills_view.path.is_empty() {
+        state.skills_view.path.pop();
+        state.skills_view.selected_file = None;
+        crate::ui::modal::open_skills_modal(state);
+        return;
+    }
+    if step > 0 {
+        if let Some(modal) = state.active_modal.as_mut() {
+            modal.set_step(step - 1);
+        }
+        return;
+    }
+    state.active_modal = None;
+}
+
+fn handle_skills_browse(state: &mut AppState, key: &str) {
+    if let Some(rest) = key.strip_prefix("vendor.open.") {
+        state.skills_view.path.clear();
+        state.skills_view.path.push(rest.to_string());
+        state.skills_view.selected_file = None;
+        crate::ui::modal::open_skills_modal(state);
+        return;
+    }
+    if let Some(rest) = key.strip_prefix("skill.open.") {
+        let mut parts = rest.splitn(2, '.');
+        let vendor = parts.next().unwrap_or("").to_string();
+        let skill = parts.next().unwrap_or("").to_string();
+        if !vendor.is_empty() && !skill.is_empty() {
+            state.skills_view.path.clear();
+            state.skills_view.path.push(vendor);
+            state.skills_view.path.push(skill);
+            state.skills_view.selected_file = None;
+            crate::ui::modal::open_skills_modal(state);
+        }
+        return;
+    }
+    if let Some(rest) = key.strip_prefix("file.open.") {
+        let mut parts = rest.splitn(3, '.');
+        let _vendor = parts.next().unwrap_or("");
+        let _skill = parts.next().unwrap_or("");
+        let file = parts.next().unwrap_or("").to_string();
+        state.skills_view.selected_file = Some(file);
+        write_pickup_and_close(state);
+        return;
+    }
+}
+
+fn handle_skills_tracker(state: &mut AppState, key: &str) {
+    if key == "update_all" {
+        if state.skills_view.updating.is_some() {
+            return;
+        }
+        let targets: Vec<String> = crate::skills::vendor_statuses()
+            .into_iter()
+            .filter(|s| s.is_stale())
+            .map(|s| s.name)
+            .collect();
+        if targets.is_empty() {
+            return;
+        }
+        let total = targets.len();
+        state.skills_view.updating = Some(crate::state::SkillsUpdateProgress {
+            total,
+            done: 0,
+            current: targets[0].clone(),
+            last_result: Some(format!("Queued {} vendor{}", total, if total == 1 { "" } else { "s" })),
+            started_at_ms: now_ms(),
+        });
+        crate::ui::modal::open_skills_modal(state);
+        crate::skills::update_all_behind_async(state.events.clone());
+    }
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn handle_skills_sources(state: &mut AppState, _key: &str) {
+    if let Some(modal) = state.active_modal.as_mut() {
+        for row in &modal.rows {
+            if let crate::ui::modal::model::ModalRow::TextInput { key, value, .. } = row {
+                if let Some(vendor) = key.strip_prefix("url.") {
+                    let trimmed = value.trim();
+                    if !trimmed.is_empty() {
+                        let _ = crate::skills::attach_url(vendor, trimmed);
+                    }
+                }
+            }
+        }
+        if modal.current_step < modal.steps.len() {
+            modal.steps[modal.current_step].rows = modal.rows.clone();
+        }
+    }
+    crate::skills::check_all_background(state.events.clone());
+    state.dirty = true;
+}
+
+fn handle_skills_install(state: &mut AppState, key: &str) {
+    if key != "install.action" && key != "install.url" && key != "install.vendor" {
+        return;
+    }
+    let mut url = String::new();
+    let mut vendor = String::new();
+    if let Some(modal) = state.active_modal.as_ref() {
+        for row in &modal.rows {
+            if let crate::ui::modal::model::ModalRow::TextInput { key, value, .. } = row {
+                if key == "install.url" {
+                    url = value.trim().to_string();
+                } else if key == "install.vendor" {
+                    vendor = value.trim().to_string();
+                }
+            }
+        }
+    }
+    if url.is_empty() {
+        return;
+    }
+    let vendor_opt = if vendor.is_empty() { None } else { Some(vendor.as_str()) };
+    match crate::skills::install_skills_bundle(&url, vendor_opt) {
+        Ok((vendor_name, count)) => {
+            let msg = format!("✓ Installed {count} skill{} for {vendor_name}", if count == 1 { "" } else { "s" });
+            crate::ipc::log_append(
+                "skills-errors.log",
+                &format!("installed {count} skills for vendor {vendor_name} from {url}"),
+            );
+            state.skills_view.last_update_summary = Some(msg);
+            crate::skills::check_all_background(state.events.clone());
+            crate::ui::modal::open_skills_modal(state);
+        }
+        Err(e) => {
+            let msg = format!("✗ Install failed: {e}");
+            crate::ipc::log_append("skills-errors.log", &format!("install failed: {e}"));
+            state.skills_view.last_update_summary = Some(msg);
+            crate::ui::modal::open_skills_modal(state);
+            if let Some(modal) = state.active_modal.as_mut() {
+                modal.set_step(3);
+            }
+        }
+    }
+}
+
+fn write_pickup_and_close(state: &mut AppState) {
+    let path = match (
+        state.skills_view.path.first().cloned(),
+        state.skills_view.path.get(1).cloned(),
+        state.skills_view.selected_file.clone(),
+    ) {
+        (Some(v), Some(s), Some(f)) => format!("{v}/{s}/{f}"),
+        _ => return,
+    };
+    let session_id = state
+        .panes
+        .get(state.active)
+        .and_then(|p| p.lock().ok())
+        .and_then(|p| p.state.session_id.clone())
+        .unwrap_or_default();
+    let seq = state.last_pickup_seq.map(|s| s + 1).unwrap_or(1);
+    state.last_pickup_seq = Some(seq);
+    let pickup = serde_json::json!({
+        "mod": "skills",
+        "modal": "skill_file",
+        "value": path,
+        "sessionId": session_id,
+        "seq": seq,
+    });
+    if let Ok(json) = serde_json::to_string_pretty(&pickup) {
+        let _ = crate::ipc::atomic_write(
+            &std::path::Path::new(&crate::ipc::ipc_path("mod-pickup.json")),
+            &json,
+        );
+    }
+    state.active_modal = None;
+}
 
 pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cmd: &str) {
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
@@ -504,6 +735,9 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                             state.close_pane(idx);
                         }
                     }
+                } else if modal.id == "skills_config" {
+                    handle_skills_modal_enter(state);
+                    return;
                 } else if modal.id.starts_with("list_") {
 
                     let mod_id = modal.id.trim_start_matches("list_").to_string();
@@ -736,7 +970,6 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
             }
             KeyCode::Backspace => {
                 if is_all_sessions {
-
                     let Some(session_id) = selected_session_id() else {
                         return;
                     };
@@ -753,31 +986,64 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                         state.sidebar.delete_session(sel_idx);
                         open_all_sessions_modal(state);
                     }
-                } else if let Some(ModalRow::TextInput { value, .. }) = modal.rows.first_mut() {
-                    value.pop();
+                } else {
+                    let idx = modal.selected.min(modal.rows.len().saturating_sub(1));
+                    if let Some(ModalRow::TextInput { value, .. }) = modal.rows.get_mut(idx) {
+                        value.pop();
+                        modal.dirty = true;
+                        if !modal.steps.is_empty() && modal.current_step < modal.steps.len() {
+                            modal.steps[modal.current_step].rows = modal.rows.clone();
+                        }
+                    } else if let Some(ModalRow::TextInput { value, .. }) = modal.rows.first_mut() {
+                        value.pop();
+                        modal.dirty = true;
+                        if !modal.steps.is_empty() && modal.current_step < modal.steps.len() {
+                            modal.steps[modal.current_step].rows = modal.rows.clone();
+                        }
+                    }
                 }
             }
             KeyCode::Char(c) => {
                 if ctrl && (c == 'c' || c == 'u') {
-                    if modal.editing_text {
-                        let idx = modal.selected.min(modal.rows.len().saturating_sub(1));
-                        if let Some(ModalRow::TextInput { value, .. }) = modal.rows.get_mut(idx) {
-                            value.clear();
+                    let idx = modal.selected.min(modal.rows.len().saturating_sub(1));
+                    if let Some(ModalRow::TextInput { value, .. }) = modal.rows.get_mut(idx) {
+                        value.clear();
+                        modal.dirty = true;
+                        if !modal.steps.is_empty() && modal.current_step < modal.steps.len() {
+                            modal.steps[modal.current_step].rows = modal.rows.clone();
                         }
                     } else if let Some(ModalRow::TextInput { value, .. }) = modal.rows.first_mut() {
                         value.clear();
+                        modal.dirty = true;
+                        if !modal.steps.is_empty() && modal.current_step < modal.steps.len() {
+                            modal.steps[modal.current_step].rows = modal.rows.clone();
+                        }
                     } else if c == 'c' {
                         state.active_modal = None;
                     }
                     return;
                 }
-                if modal.editing_text {
-                    let idx = modal.selected.min(modal.rows.len().saturating_sub(1));
-                    if let Some(ModalRow::TextInput { value, .. }) = modal.rows.get_mut(idx) {
-                        value.push(c);
+                if ctrl && (c == 'v' || c == 'V') {
+                    if let Some(text) = crate::mux_core::nav::read_clipboard() {
+                        handle_paste(state, &text);
                     }
-                } else if let Some(ModalRow::TextInput { value, .. }) = modal.rows.first_mut() {
+                    return;
+                }
+                let idx = modal.selected.min(modal.rows.len().saturating_sub(1));
+                if let Some(ModalRow::TextInput { value, .. }) = modal.rows.get_mut(idx) {
                     value.push(c);
+                    modal.dirty = true;
+                    if !modal.steps.is_empty() && modal.current_step < modal.steps.len() {
+                        modal.steps[modal.current_step].rows = modal.rows.clone();
+                    }
+                } else if modal.editing_text {
+                    if let Some(ModalRow::TextInput { value, .. }) = modal.rows.first_mut() {
+                        value.push(c);
+                        modal.dirty = true;
+                        if !modal.steps.is_empty() && modal.current_step < modal.steps.len() {
+                            modal.steps[modal.current_step].rows = modal.rows.clone();
+                        }
+                    }
                 } else {
                     match c {
                         'k' => modal.move_selection(-1),
@@ -1186,6 +1452,19 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                     open_auto_retry_modal(state);
                     return;
                 }
+                Some(SidebarRow::PrefSkills) => {
+                    crate::ui::modal::open_skills_modal(state);
+                    return;
+                }
+                Some(SidebarRow::PrefSkillInjection) => {
+                    let mut prefs = crate::prefs::Prefs::load();
+                    prefs.skill_injection = !prefs.skill_injection;
+                    prefs.skills.injection_enabled = prefs.skill_injection;
+                    let _ = prefs.save();
+                    state.sidebar.skill_injection = prefs.skill_injection;
+                    state.dirty = true;
+                    return;
+                }
                 Some(SidebarRow::ModConfig(idx)) => {
                     open_mod_config_modal(state, idx);
                     return;
@@ -1244,6 +1523,14 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                 }
                 Some(SidebarRow::NavBack) => {
                     state.sidebar.open_submenu(SettingsSubMenu::Main);
+                }
+                Some(SidebarRow::PrefSkillInjection) => {
+                    let mut prefs = crate::prefs::Prefs::load();
+                    prefs.skill_injection = !prefs.skill_injection;
+                    prefs.skills.injection_enabled = prefs.skill_injection;
+                    let _ = prefs.save();
+                    state.sidebar.skill_injection = prefs.skill_injection;
+                    state.dirty = true;
                 }
                 Some(SidebarRow::PrefYolo) => {
                     state.sidebar.yolo_mode = !state.sidebar.yolo_mode;
@@ -1411,6 +1698,47 @@ pub fn execute_switcher_action(
         }
         SwitcherAction::OpenContext => {
             crate::mux_core::modals::open_context_modal(state);
+        }
+    }
+}
+
+pub fn handle_paste(state: &mut AppState, text: &str) {
+    let clean = text.replace('\r', "").replace('\n', "");
+    if let Some(modal) = state.active_modal.as_mut() {
+        let idx = modal.selected.min(modal.rows.len().saturating_sub(1));
+        if let Some(ModalRow::TextInput { value, .. }) = modal.rows.get_mut(idx) {
+            value.push_str(&clean);
+            modal.dirty = true;
+            if !modal.steps.is_empty() && modal.current_step < modal.steps.len() {
+                modal.steps[modal.current_step].rows = modal.rows.clone();
+            }
+            return;
+        }
+        for row in modal.rows.iter_mut() {
+            if let ModalRow::TextInput { value, .. } = row {
+                value.push_str(&clean);
+                modal.dirty = true;
+                if !modal.steps.is_empty() && modal.current_step < modal.steps.len() {
+                    modal.steps[modal.current_step].rows = modal.rows.clone();
+                }
+                return;
+            }
+        }
+        return;
+    }
+    if let Some(finder) = state.finder.as_mut() {
+        finder.query.push_str(&clean);
+    }
+    if state.finder.is_some() {
+        let panes = state.panes.clone();
+        if let Some(finder) = state.finder.as_mut() {
+            finder.update_results(&panes);
+        }
+        return;
+    }
+    if let Some(pane) = state.panes.get(state.active) {
+        if let Ok(mut p) = pane.lock() {
+            p.write_paste(text);
         }
     }
 }

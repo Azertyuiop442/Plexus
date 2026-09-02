@@ -135,12 +135,14 @@ pub struct Sidebar {
     pub active_tab: usize,
     pub settings_menu: SettingsSubMenu,
     pub yolo_mode: bool,
+    pub skill_injection: bool,
     pub taste_learning: bool,
     pub ide_context: bool,
     pub show_cost_bar: bool,
     pub show_context_btn: bool,
     pub show_usage: bool,
     pub auto_retry_enabled: bool,
+    pub skills_update_count: usize,
 
     pub live_blocks: Vec<LiveBlock>,
     pub available_update: Option<String>,
@@ -198,12 +200,14 @@ impl Sidebar {
             active_tab: 0,
             settings_menu: SettingsSubMenu::Main,
             yolo_mode: false,
+            skill_injection: false,
             taste_learning: true,
             ide_context: true,
             show_cost_bar: true,
             show_context_btn: true,
             show_usage: true,
             auto_retry_enabled: true,
+            skills_update_count: 0,
             live_blocks: Vec::new(),
             available_update: None,
             usage: crate::usage::load_cached_usage(),
@@ -212,12 +216,14 @@ impl Sidebar {
 
         let prefs = crate::prefs::Prefs::load();
         s.yolo_mode = prefs.yolo_mode;
+        s.skill_injection = prefs.skill_injection;
         s.taste_learning = prefs.taste_learning;
         s.ide_context = prefs.ide_context;
         s.show_cost_bar = prefs.show_cost_bar;
         s.show_context_btn = prefs.show_context_btn;
         s.show_usage = prefs.show_usage;
         s.auto_retry_enabled = prefs.auto_retry.enabled;
+        s.skills_update_count = crate::skills::count_updates();
         let config = fs::read_to_string(Path::new(&bridge_data_dir()).join("config.json"))
             .ok()
             .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok());
@@ -265,6 +271,13 @@ impl Sidebar {
         self.rebuild_rows();
     }
 
+    pub fn set_skills_update_count(&mut self, count: usize) {
+        if self.skills_update_count != count {
+            self.skills_update_count = count;
+            self.rebuild_rows();
+        }
+    }
+
     pub fn rebuild_rows(&mut self) {
         self.rows.clear();
         match self.settings_menu {
@@ -295,6 +308,8 @@ impl Sidebar {
                 self.rows.push(SidebarRow::NavBack);
                 self.rows.push(SidebarRow::PrefFullConfig);
                 self.rows.push(SidebarRow::PrefAutoRetry);
+                self.rows.push(SidebarRow::PrefSkills);
+                self.rows.push(SidebarRow::PrefSkillInjection);
                 self.rows.push(SidebarRow::PrefYolo);
                 self.rows.push(SidebarRow::PrefShowUsage);
             }

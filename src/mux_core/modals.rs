@@ -1198,6 +1198,31 @@ pub fn sync_modal_toggles(state: &mut AppState) {
             }
         }
 
+        if mod_id == "skills_config" {
+            for step in &modal.steps {
+                for row in &step.rows {
+                    if let ModalRow::TextInput { key, value, .. } = row {
+                        if let Some(vendor) = key.strip_prefix("url.") {
+                            let trimmed = value.trim();
+                            if !trimmed.is_empty() {
+                                let _ = crate::skills::attach_url(vendor, trimmed);
+                            }
+                        }
+                    }
+                }
+            }
+            for row in &modal.rows {
+                if let ModalRow::TextInput { key, value, .. } = row {
+                    if let Some(vendor) = key.strip_prefix("url.") {
+                        let trimmed = value.trim();
+                        if !trimmed.is_empty() {
+                            let _ = crate::skills::attach_url(vendor, trimmed);
+                        }
+                    }
+                }
+            }
+        }
+
         if modal.dirty {
             if modal.id == "ai_prefs" {
                 save_peak_alert(&modal.all_rows());

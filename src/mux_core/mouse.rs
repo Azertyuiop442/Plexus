@@ -461,9 +461,15 @@ pub fn handle_mouse(
                 .as_ref()
                 .map(|m| {
                     let rows = if m.page_size > 0 {
-                        m.visible_rows().len()
+                        m.visible_rows()
+                            .iter()
+                            .map(|r| crate::ui::modal::row_wrapped_lines(r, 78).max(1))
+                            .sum::<u16>() as usize
                     } else {
-                        m.rows.len()
+                        m.rows
+                            .iter()
+                            .map(|r| crate::ui::modal::row_wrapped_lines(r, 78).max(1))
+                            .sum::<u16>() as usize
                     };
                     let cmds = if m.steps.is_empty() { m.commands.len() } else { 0 };
                     let tw = if !m.steps.is_empty() {
@@ -471,7 +477,7 @@ pub fn handle_mouse(
                             .iter()
                             .map(|s| (crate::ui::text::width(&s.title) + 4) as u16)
                             .sum::<u16>()
-                            + 4
+                            .saturating_add(4)
                     } else {
                         0
                     };
@@ -642,6 +648,17 @@ pub fn handle_mouse(
                     }
                     SidebarRow::PrefAutoRetry => {
                         crate::ui::modal::open_auto_retry_modal(state);
+                    }
+                    SidebarRow::PrefSkills => {
+                        crate::ui::modal::open_skills_modal(state);
+                    }
+                    SidebarRow::PrefSkillInjection => {
+                        let mut prefs = crate::prefs::Prefs::load();
+                        prefs.skill_injection = !prefs.skill_injection;
+                        prefs.skills.injection_enabled = prefs.skill_injection;
+                        let _ = prefs.save();
+                        state.sidebar.skill_injection = prefs.skill_injection;
+                        state.dirty = true;
                     }
                     SidebarRow::PrefYolo => {
                         state.sidebar.yolo_mode = !state.sidebar.yolo_mode;
