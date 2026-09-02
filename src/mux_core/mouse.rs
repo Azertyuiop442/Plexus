@@ -679,6 +679,9 @@ pub fn handle_mouse(
                     SidebarRow::Reload => {
                         reload_mux();
                     }
+                    SidebarRow::BugReport => {
+                        crate::ui::links::open_bug_report_url();
+                    }
                     SidebarRow::Twitter => {
                         #[cfg(target_os = "macos")]
                         {

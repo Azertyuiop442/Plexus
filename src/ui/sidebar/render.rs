@@ -309,6 +309,32 @@ pub fn render_sidebar(
                 focused,
                 &p,
             );
+            let sel = selected_row == Some(SidebarRow::BugReport);
+            let bug_icon = nf_icons::nf!("nf-cod-bug");
+            let bug_text = format!(" {} Bug Report ", bug_icon);
+            let bug_len = crate::ui::text::width(&bug_text);
+            card_row(
+                frame,
+                &mut y,
+                inner,
+                view,
+                SidebarRow::BugReport,
+                vec![
+                    Span::styled(bug_text, label_style(&p, sel)),
+                    Span::raw(pad(width, bug_len, 1)),
+                    Span::styled(
+                        "›",
+                        if sel {
+                            Style::default().fg(p.text).add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default().fg(p.overlay0)
+                        },
+                    ),
+                ],
+                sel,
+                focused,
+                &p,
+            );
         }
         SettingsSubMenu::Preferences => {
             let sel = selected_row == Some(SidebarRow::NavBack);

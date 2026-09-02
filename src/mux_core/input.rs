@@ -1479,6 +1479,9 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                 Some(SidebarRow::Reload) => {
                     reload_mux();
                 }
+                Some(SidebarRow::BugReport) => {
+                    crate::ui::links::open_bug_report_url();
+                }
                 Some(SidebarRow::LiveBlockOpen(_))
                 | Some(SidebarRow::LiveBlockDismiss(_))
                 | Some(SidebarRow::LiveBlockResume(_))
@@ -1556,6 +1559,9 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                 }
                 Some(SidebarRow::Reload) => {
                     reload_mux();
+                }
+                Some(SidebarRow::BugReport) => {
+                    crate::ui::links::open_bug_report_url();
                 }
                 _ => {}
             },

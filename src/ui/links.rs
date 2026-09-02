@@ -178,6 +178,47 @@ pub fn open_file_in_editor(path: &str, _line: Option<u32>, cwd: Option<&str>) {
     }
 }
 
+pub fn url_encode(input: &str) -> String {
+    let mut out = String::with_capacity(input.len() * 3);
+    for b in input.bytes() {
+        match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            b' ' => out.push('+'),
+            _ => {
+                use std::fmt::Write;
+                let _ = write!(out, "%{:02X}", b);
+            }
+        }
+    }
+    out
+}
+
+pub fn bug_report_url() -> String {
+    let version = env!("CARGO_PKG_VERSION");
+    let os = std::env::consts::OS;
+    let arch = std::env::consts::ARCH;
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "unknown".into());
+    let terminal = std::env::var("TERM_PROGRAM")
+        .or_else(|_| std::env::var("TERM"))
+        .unwrap_or_else(|_| "unknown".into());
+
+    let body = format!(
+        "### Describe the Bug\n\n\n### Steps to Reproduce\n1. \n2. \n3. \n\n### Expected Behavior\n\n\n### Environment & Diagnostics\n- **Plexus Version**: v{version}\n- **OS**: {os} ({arch})\n- **Shell**: {shell}\n- **Terminal**: {terminal}\n"
+    );
+
+    format!(
+        "https://github.com/Azertyuiop442/Plexus/issues/new?title={}&body={}",
+        url_encode("[Bug]: "),
+        url_encode(&body)
+    )
+}
+
+pub fn open_bug_report_url() {
+    open_url(&bug_report_url());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,6 +292,22 @@ mod tests {
             link_at(line, 20),
             Some(Hit::Url("http://localhost:3000/api".into()))
         );
+    }
+
+    #[test]
+    fn test_url_encode() {
+        assert_eq!(url_encode("hello world"), "hello+world");
+        assert_eq!(url_encode("a/b?c=d&e=f#g"), "a%2Fb%3Fc%3Dd%26e%3Df%23g");
+        assert_eq!(url_encode("[Bug]: "), "%5BBug%5D%3A+");
+    }
+
+    #[test]
+    fn test_bug_report_url_structure() {
+        let url = bug_report_url();
+        assert!(url.starts_with("https://github.com/Azertyuiop442/Plexus/issues/new?title=%5BBug%5D%3A+&body="));
+        assert!(url.contains("Plexus+Version"));
+        assert!(url.contains(env!("CARGO_PKG_VERSION")));
+        assert!(url.contains(std::env::consts::OS));
     }
 }
 

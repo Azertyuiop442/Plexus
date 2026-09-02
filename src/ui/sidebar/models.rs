@@ -100,6 +100,7 @@ pub enum SidebarRow {
     NavModConfig,
     NavAIPrefs,
     Reload,
+    BugReport,
     Update,
     Twitter,
 

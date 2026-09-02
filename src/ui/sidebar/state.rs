@@ -289,6 +289,7 @@ impl Sidebar {
                 self.rows.push(SidebarRow::NavModConfig);
                 self.rows.push(SidebarRow::NavAIPrefs);
                 self.rows.push(SidebarRow::Reload);
+                self.rows.push(SidebarRow::BugReport);
 
                 self.rows.push(SidebarRow::NewSession);
                 if !self.sessions.is_empty() {
