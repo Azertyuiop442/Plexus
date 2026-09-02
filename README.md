@@ -27,7 +27,7 @@
 
 ## 01. Architecture &amp; Mod Bridge
 
-Plexus acts as a presentation shell decoupled from background logic. Companion mods (written in Python, Go, Node.js, Rust, or Bash) communicate non-blockingly via file-IPC in `/tmp/cc-sidebar/`:
+Plexus acts as a presentation shell decoupled from background logic. Companion mods and background services communicate non-blockingly via JSON file-IPC in `/tmp/cc-sidebar/`:
 
 - `mods-data/<mod>.json`: Mods push live widgets, metrics, and modals.
 - `mod-pickup.json`: Plexus routes user clicks and triggers back to the active mod.
@@ -45,7 +45,7 @@ Plexus acts as a presentation shell decoupled from background logic. Companion m
 <br/>
 
 - **Decoupled Multiplexing**: Native Rust PTY terminal multiplexer with persistent tabs, background process isolation, and hot reload (<kbd>Ctrl</kbd>+<kbd>R</kbd>).
-- **Data-Driven Mod Bridge**: Any process can push live widgets, metrics, and interactive modals via JSON IPC (`/tmp/cc-sidebar/`). Fully language-agnostic.
+- **Data-Driven Mod Bridge**: Companion mods and background services push live widgets, metrics, and interactive modals via JSON IPC (`/tmp/cc-sidebar/`).
 - **Autonomous Agent Skills**:
   - Install skill bundles directly from any GitHub repository URL.
   - Live remote git tracking: automatically checks upstream commit freshness and flags updates.
