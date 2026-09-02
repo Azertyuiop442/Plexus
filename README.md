@@ -40,6 +40,10 @@ Plexus acts as a presentation shell decoupled from background logic. Companion m
 
 ## 02. Features
 
+<details>
+<summary><b>Click to expand technical features list</b></summary>
+<br/>
+
 - **Decoupled Multiplexing**: Native Rust PTY terminal multiplexer with persistent tabs, background process isolation, and hot reload (<kbd>Ctrl</kbd>+<kbd>R</kbd>).
 - **Data-Driven Mod Bridge**: Any process can push live widgets, metrics, and interactive modals via JSON IPC (`/tmp/cc-sidebar/`). Fully language-agnostic.
 - **Autonomous Agent Skills**:
@@ -58,6 +62,8 @@ Plexus acts as a presentation shell decoupled from background logic. Companion m
   - Interactive 1-line ASCII gauge tracking usage limits (5-hour, weekly, and monthly quotas).
 - **Self-Pulling Update Engine**:
   - In-app version detection with automatic fast-forward updates.
+
+</details>
 
 ---
 
