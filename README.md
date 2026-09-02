@@ -38,7 +38,30 @@ Plexus acts as a presentation shell decoupled from background logic. Companion m
 
 ---
 
-## 02. Installation
+## 02. Features
+
+- **Decoupled Multiplexing**: Native Rust PTY terminal multiplexer with persistent tabs, background process isolation, and hot reload (<kbd>Ctrl</kbd>+<kbd>R</kbd>).
+- **Data-Driven Mod Bridge**: Any process can push live widgets, metrics, and interactive modals via JSON IPC (`/tmp/cc-sidebar/`). Fully language-agnostic.
+- **Autonomous Agent Skills**:
+  - Install skill bundles directly from any GitHub repository URL.
+  - Live remote git tracking: automatically checks upstream commit freshness and flags updates.
+  - One-click in-app background updater with progress indicators and automatic context injection.
+- **Configurable Sound Alerts**:
+  - Audio cues on task completion and user intervention / permission prompts.
+  - Native, zero-latency playback on macOS (`afplay`), Windows (`PowerShell` / SystemSounds), and Linux (`paplay` / `pw-play`).
+  - Anti-duplication run latch and global debounce cooldown to eliminate audio overlap across multiple open terminals.
+  - Dedicated configuration modal with live sound preview and test triggers.
+- **Transient Error Recovery & Auto-Retry**:
+  - Real-time classifier for provider rate limits (429), server outages (5xx), and network drops.
+  - Configurable exponential backoff, jitter, and interrupt safety.
+- **Live Usage Telemetry**:
+  - Interactive 1-line ASCII gauge tracking usage limits (5-hour, weekly, and monthly quotas).
+- **Self-Pulling Update Engine**:
+  - In-app version detection with automatic fast-forward updates.
+
+---
+
+## 03. Installation
 
 ### One-Command Installer
 
@@ -68,7 +91,7 @@ bash install.sh
 
 ---
 
-## 03. Keybindings
+## 04. Keybindings
 
 | Shortcut | Action | Scope |
 |:---:|---|:---:|
@@ -85,13 +108,13 @@ bash install.sh
 
 ---
 
-## 04. Ecosystem &amp; Mod Hub
+## 05. Ecosystem &amp; Mod Hub
 
 Discover and install community extensions on the **[Plexus Community Mods Hub](https://github.com/Azertyuiop442/plexus-community-mods)**.
 
 ---
 
-## 05. License
+## 06. License
 
 Source-available under the [Fair &amp; Community License](LICENSE.md). Free for personal, academic, and open-source use.
 
