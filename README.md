@@ -99,6 +99,10 @@ bash install.sh
 
 ## 04. Keybindings
 
+<details>
+<summary><b>Click to expand keyboard shortcuts table</b></summary>
+<br/>
+
 | Shortcut | Action | Scope |
 |:---:|---|:---:|
 | <kbd>Ctrl</kbd> + <kbd>P</kbd> | Quick Switcher / Fuzzy Palette | `[Global]` |
@@ -111,6 +115,8 @@ bash install.sh
 | <kbd>Ctrl</kbd> + <kbd>W</kbd> · <kbd>x</kbd> | Close Tab | `[Active Tab]` |
 | <kbd>Alt</kbd> + <kbd>1</kbd> .. <kbd>9</kbd> | Jump to Tab N | `[Tab Bar]` |
 | <kbd>Ctrl</kbd> + <kbd>R</kbd> | Hot Reload Shell | `[Global]` |
+
+</details>
 
 ---
 
@@ -129,8 +135,8 @@ Source-available under the [Fair &amp; Community License](LICENSE.md). Free for 
 <h2 align="center">Reviews &amp; Ratings</h2>
 
 <p align="center">
-  <a href="https://peership.dev/apps/abd3bcce-ceb3-4b11-a3d8-0781d98e43dc"><img src="https://peership.dev/api/badge/abd3bcce-ceb3-4b11-a3d8-0781d98e43dc" alt="Plexus on PeerShip"/></a>
+  <a href="https://peership.dev"><img src="https://peership.dev/api/badge/abd3bcce-ceb3-4b11-a3d8-0781d98e43dc" alt="Plexus on PeerShip"/></a>
   <br/><br/>
   Tested Plexus? Share your rating and review on PeerShip! <br/>
-  👉 <b><a href="https://peership.dev/apps/abd3bcce-ceb3-4b11-a3d8-0781d98e43dc">Leave your review for Plexus on PeerShip</a></b>
+  <a href="https://peership.dev"><b>Leave your review for Plexus on peership.dev</b></a>
 </p>
