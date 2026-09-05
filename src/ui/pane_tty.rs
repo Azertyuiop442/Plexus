@@ -96,6 +96,38 @@ pub fn tty_of_pid(pid: u32) -> Option<String> {
     }
 }
 
+pub fn pid_cwd(pid: u32) -> Option<String> {
+    if pid == 0 {
+        return None;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::fs::read_link(format!("/proc/{pid}/cwd"))
+            .ok()
+            .map(|p| p.to_string_lossy().to_string())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let out = std::process::Command::new("lsof")
+            .args(["-p", &pid.to_string(), "-a", "-d", "cwd", "-Fn"])
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        for line in stdout.lines() {
+            if let Some(path) = line.strip_prefix('n') {
+                let trimmed = path.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+        None
+    }
+}
+
 #[cfg(target_os = "linux")]
 fn tty_device_name(tty_nr: u32) -> Option<String> {
     use std::os::unix::fs::MetadataExt;

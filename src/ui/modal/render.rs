@@ -1,4 +1,3 @@
-
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -6,14 +5,12 @@ use ratatui::widgets::{Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::theme::Palette;
-use crate::ui::mod_bridge::color_from_name;
-use crate::ui::text::{truncate, width};
+use crate::ui::text::width;
 use crate::ui::widget::render_modal_shell;
 
-use super::ansi::ansi_spans;
 use super::model::{Modal, ModalRow};
+pub use super::row_render::{row_content_width, row_spans, row_wrapped_lines};
 
-#[allow(dead_code)]
 pub fn dim_background(frame: &mut Frame, area: Rect) {
     let buf = frame.buffer_mut();
     for y in area.y..area.y + area.height {
@@ -65,63 +62,17 @@ pub fn modal_stack_areas(
     (header, content, actions)
 }
 
-pub fn row_content_width(row: &ModalRow) -> u16 {
-    let text = match row {
-        ModalRow::Toggle { label, .. } => label.clone(),
-        ModalRow::Nav { label, .. } => label.clone(),
-        ModalRow::Choice { label, options, .. } => {
-            let cur = options
-                .get(options.len().saturating_sub(1))
-                .map(|(d, _, _)| d.clone())
-                .unwrap_or_default();
-            format!("{label}  {cur}")
-        }
-        ModalRow::TextInput { label, value, .. } => format!("{label}  {value}"),
-        ModalRow::Info(t) => t.clone(),
-        ModalRow::InfoColored { text, .. } => text.clone(),
-        ModalRow::Separator(t) => t.clone(),
-        ModalRow::Progress { label, .. } => format!("{label}  0/0"),
-        ModalRow::Stepper { label, value, unit, .. } => {
-            let val_str = if *value == 0 && unit.contains("tries") {
-                "Infinite (∞)".to_string()
-            } else {
-                format!("{value}{unit}")
-            };
-            format!("{label}  ‹ {val_str} ›")
-        }
-        ModalRow::Table { headers, rows, .. } => {
-            let cols = headers.iter().map(|h| width(h)).max().unwrap_or(0)
-                + rows
-                    .iter()
-                    .flat_map(|r| r.iter().map(|c| width(c)))
-                    .max()
-                    .unwrap_or(0);
-            format!("{}{}", headers.join("  "), "x".repeat(cols))
-        }
-        ModalRow::Section { title, .. } => title.clone(),
-    };
-
-    let visible: usize = text
-        .split('\x1b')
-        .map(|seg| {
-            let seg = seg.strip_prefix('[').unwrap_or(seg);
-            let seg = seg.split_once('m').map(|(_, rest)| rest).unwrap_or(seg);
-            width(seg)
-        })
-        .sum();
-    (visible as u16).clamp(56, 120)
-}
-
 pub fn modal_rect(area: Rect, rows: usize, cmds: usize, content_width: u16) -> Option<Rect> {
     let cmds = cmds.min(8);
     let avail_h = area.height.saturating_sub(2);
     let avail_w = area.width.saturating_sub(4);
     let height = (rows as u16 + 7 + cmds as u16 + 1).clamp(4, avail_h.max(4));
-    let width = (content_width + 4).clamp(56, avail_w.max(56));
+    let width = (content_width + 4).clamp(56, avail_w.min(76).max(56));
     crate::ui::widget::centered_popup_rect(area, width, height)
 }
 
 pub fn render_modal(frame: &mut Frame, area: Rect, modal: &Modal, p: &Palette) {
+    dim_background(frame, area);
 
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -129,17 +80,16 @@ pub fn render_modal(frame: &mut Frame, area: Rect, modal: &Modal, p: &Palette) {
         .as_millis();
     let spinner_frame = ["|", "/", "-", "\\"][(now_ms as usize / 120) % 4];
     let shown_rows = if modal.page_size > 0 {
-
         modal
             .visible_rows()
             .iter()
-            .map(|r| row_wrapped_lines(r, 78).max(1))
+            .map(|r| row_wrapped_lines(r, 68).max(1))
             .sum::<u16>() as usize
     } else {
         modal
             .rows
             .iter()
-            .map(|r| row_wrapped_lines(r, 78).max(1))
+            .map(|r| row_wrapped_lines(r, 68).max(1))
             .sum::<u16>() as usize
     };
 
@@ -159,7 +109,11 @@ pub fn render_modal(frame: &mut Frame, area: Rect, modal: &Modal, p: &Palette) {
         .map(row_content_width)
         .max()
         .unwrap_or(56);
-    let content_width = row_max.max(tabs_width).clamp(56, 120);
+    let content_width = if !modal.steps.is_empty() {
+        56
+    } else {
+        row_max.max(tabs_width.min(72)).clamp(56, 72)
+    };
     let cmds_count = if modal.steps.is_empty() { modal.commands.len() } else { 0 };
     let Some(popup) = modal_rect(area, shown_rows, cmds_count, content_width) else {
         return;
@@ -175,17 +129,14 @@ pub fn render_modal(frame: &mut Frame, area: Rect, modal: &Modal, p: &Palette) {
 
     {
         let title_fmt = if !modal.steps.is_empty() {
-            format!(
-                " {} ({}) ",
-                modal.title, modal.steps[modal.current_step].title
-            )
+            format!(" {} {} ", nf_icons::nf!("nf-cod-gear"), modal.title)
         } else {
             format!(" {} ", modal.title)
         };
         let border_blue = Palette::dark().blue;
         let border_style = Style::default()
             .fg(border_blue)
-            .bg(ratatui::style::Color::Rgb(0, 0, 0))
+            .bg(p.sidebar_bg)
             .add_modifier(Modifier::BOLD);
 
         let title_w = width(&title_fmt) as u16;
@@ -201,11 +152,33 @@ pub fn render_modal(frame: &mut Frame, area: Rect, modal: &Modal, p: &Palette) {
             }
         }
 
+        if !modal.steps.is_empty() {
+            let step_badge = format!(" Step {}/{} ", modal.current_step + 1, modal.steps.len());
+            let badge_w = width(&step_badge) as u16;
+            let badge_x = popup.x + popup.width.saturating_sub(badge_w + 2);
+            let badge_style = Style::default()
+                .fg(p.accent)
+                .bg(p.sidebar_bg)
+                .add_modifier(Modifier::BOLD);
+            for (i, ch) in step_badge.chars().enumerate() {
+                let bx = badge_x + i as u16;
+                if bx < popup.x + popup.width - 1 {
+                    frame.buffer_mut()[(bx, popup.y)]
+                        .set_symbol(&ch.to_string())
+                        .set_style(badge_style);
+                }
+            }
+        }
     }
 
     let has_steps = !modal.steps.is_empty();
+    let has_actions = has_steps
+        || modal.rows.iter().any(|r| r.is_selectable())
+        || !modal.commands.is_empty();
     let (header, content, actions) = if has_steps {
         modal_stack_areas(inner, 1, 1, 1)
+    } else if has_actions && inner.height >= 8 {
+        modal_stack_areas(inner, 0, 1, 1)
     } else {
         modal_stack_areas(inner, 0, 0, 1)
     };
@@ -224,7 +197,6 @@ pub fn render_modal(frame: &mut Frame, area: Rect, modal: &Modal, p: &Palette) {
         let mut spans: Vec<Span> = Vec::new();
 
         if sum_natural_w <= total_w && n_steps > 0 {
-
             let base_seg_w = total_w / n_steps;
             let remainder = total_w % n_steps;
 
@@ -248,7 +220,6 @@ pub fn render_modal(frame: &mut Frame, area: Rect, modal: &Modal, p: &Palette) {
                 spans.push(Span::styled(padded_text, style));
             }
         } else if n_steps > 0 {
-
             let cur = modal.current_step;
             let mut start_idx = cur;
             let mut end_idx = cur + 1;
@@ -258,16 +229,16 @@ pub fn render_modal(frame: &mut Frame, area: Rect, modal: &Modal, p: &Palette) {
                 let mut expanded = false;
                 if end_idx < n_steps {
                     let next_w = tab_natural_widths[end_idx] + if end_idx + 1 < n_steps { 4 } else { 0 };
-                    if used_w + next_w <= total_w.saturating_sub(if start_idx > 0 { 4 } else { 0 }) {
-                        used_w += tab_natural_widths[end_idx];
+                    if used_w + next_w <= total_w {
+                        used_w += next_w;
                         end_idx += 1;
                         expanded = true;
                     }
                 }
                 if start_idx > 0 {
-                    let prev_w = tab_natural_widths[start_idx - 1] + if start_idx - 1 > 0 { 4 } else { 0 };
-                    if used_w + prev_w <= total_w.saturating_sub(if end_idx < n_steps { 4 } else { 0 }) {
-                        used_w += tab_natural_widths[start_idx - 1];
+                    let prev_w = tab_natural_widths[start_idx - 1] + if start_idx > 1 { 4 } else { 0 };
+                    if used_w + prev_w <= total_w {
+                        used_w += prev_w;
                         start_idx -= 1;
                         expanded = true;
                     }
@@ -350,7 +321,7 @@ pub fn render_modal(frame: &mut Frame, area: Rect, modal: &Modal, p: &Palette) {
     };
 
     let visible: Vec<&ModalRow> = modal.visible_rows().iter().collect();
-    let wrap_w = rows_area.width.saturating_sub(2).max(10) as usize;
+    let wrap_w = rows_area.width as usize;
 
     let row_heights: Vec<u16> = visible
         .iter()
@@ -449,17 +420,16 @@ pub fn render_modal(frame: &mut Frame, area: Rect, modal: &Modal, p: &Palette) {
                 1,
             );
             frame.render_widget(
-                Paragraph::new(Line::from(Span::styled(
-                    format!("+{} more", modal.commands.len() - max_cmds),
+                Paragraph::new(Line::from(vec![Span::styled(
+                    format!("  +{} more", modal.commands.len() - max_cmds),
                     Style::default().fg(p.overlay0),
-                ))),
+                )])),
                 rect,
             );
         }
     }
 
     if let Some(actions_rect) = actions {
-
         let rule_rect = Rect::new(
             actions_rect.x,
             actions_rect.y.saturating_sub(1),
@@ -482,7 +452,7 @@ pub fn render_modal(frame: &mut Frame, area: Rect, modal: &Modal, p: &Palette) {
         }
 
         if !modal.steps.is_empty() {
-            pairs.push(("⇥", "Tab".to_string()));
+            pairs.push(("Tab", "Step".to_string()));
         }
 
         let current_row = modal.rows.get(modal.selected);
@@ -494,15 +464,17 @@ pub fn render_modal(frame: &mut Frame, area: Rect, modal: &Modal, p: &Palette) {
         }
 
         if modal.editing_text {
-            pairs.push(("⏎", "Commit".to_string()));
+            pairs.push(("Enter", "Commit".to_string()));
         } else if matches!(current_row, Some(ModalRow::TextInput { .. })) {
-            pairs.push(("⏎", "Edit".to_string()));
+            pairs.push(("Enter", "Edit".to_string()));
         } else if matches!(current_row, Some(ModalRow::Toggle { .. })) {
-            pairs.push(("⏎", "Toggle".to_string()));
+            pairs.push(("Enter", "Toggle".to_string()));
         } else if matches!(current_row, Some(ModalRow::Choice { .. })) {
-            pairs.push(("⏎", "Select".to_string()));
+            pairs.push(("Enter", "Select".to_string()));
+        } else if matches!(current_row, Some(ModalRow::Nav { .. })) {
+            pairs.push(("Enter", "Open".to_string()));
         } else if !modal.commands.is_empty() && modal.selected >= modal.rows.len() {
-            pairs.push(("⏎", "Run".to_string()));
+            pairs.push(("Enter", "Run".to_string()));
         }
 
         if modal.page_size > 0 && modal.page_count() > 1 {
@@ -522,11 +494,14 @@ pub fn render_modal(frame: &mut Frame, area: Rect, modal: &Modal, p: &Palette) {
         let mut spans: Vec<Span<'static>> = Vec::new();
         for (i, (key, label)) in pairs.iter().enumerate() {
             if i > 0 {
-                spans.push(Span::styled(" · ", Style::default().fg(p.overlay0)));
+                spans.push(Span::styled("   ", Style::default()));
             }
             spans.push(Span::styled(
-                key.to_string(),
-                Style::default().fg(p.accent).add_modifier(Modifier::BOLD),
+                format!(" {key} "),
+                Style::default()
+                    .fg(p.accent)
+                    .bg(p.surface0)
+                    .add_modifier(Modifier::BOLD),
             ));
             if !label.is_empty() {
                 spans.push(Span::styled(
@@ -544,399 +519,16 @@ pub fn render_modal(frame: &mut Frame, area: Rect, modal: &Modal, p: &Palette) {
     }
 }
 
-fn role_color(p: &Palette, color: &str) -> Style {
-    if color.is_empty() {
-        Style::default().fg(p.blue).add_modifier(Modifier::BOLD)
-    } else {
-        Style::default()
-            .fg(crate::ui::mod_bridge::color_from_name(p, color))
-            .add_modifier(Modifier::BOLD)
-    }
-}
-
-pub fn row_wrapped_lines(row: &ModalRow, w: usize) -> u16 {
-    let w = w.max(10);
-    let count = |text: &str| -> u16 {
-
-        let visible: String = text
-            .split('\x1b')
-            .map(|seg| {
-                let seg = seg.strip_prefix('[').unwrap_or(seg);
-                let seg = seg.split_once('m').map(|(_, rest)| rest).unwrap_or(seg);
-                seg.to_string()
-            })
-            .collect();
-        let mut lines = 0u16;
-        for logical in visible.split('\n') {
-            let len = width(logical);
-            lines += ((len as u16).div_ceil(w as u16)).max(1);
-        }
-        lines
-    };
-    match row {
-        ModalRow::Info(t) => count(t),
-        ModalRow::InfoColored { text, .. } => count(text),
-        ModalRow::Nav { label, .. } => count(label),
-        ModalRow::Separator(t) => count(t),
-        ModalRow::Section { title, .. } => count(title),
-        ModalRow::TextInput { label, value, .. } => count(&format!("{label}: {value}")),
-        ModalRow::Table { headers, rows, .. } => {
-            let mut n = count(&headers.join("  "));
-            for r in rows {
-                n += count(&r.join("  "));
-            }
-            n
-        }
-        _ => 1,
-    }
-}
-
-fn row_spans(
-    row: &ModalRow,
-    p: &Palette,
-    _selected: bool,
-    w: usize,
-    spinner_frame: &str,
-) -> Vec<Span<'static>> {
-    let mut spans = Vec::new();
-    match row {
-        ModalRow::Nav { label, color, .. } => {
-            let fg = color_from_name(p, color);
-            let label_max = w.saturating_sub(2);
-            let label = truncate(label, label_max);
-            spans.push(Span::styled(
-                label,
-                Style::default().fg(fg).add_modifier(Modifier::BOLD),
-            ));
-        }
-        ModalRow::Toggle { label, enabled, .. } => {
-            let (glyph, fg) = if *enabled {
-                ("✓", p.green)
-            } else {
-                ("✕", p.red)
-            };
-            let pill_w = 7;
-            let label_max = w.saturating_sub(pill_w + 2);
-            let label = truncate(label, label_max);
-            let label_w = width(&label);
-            spans.push(Span::styled(label, Style::default().fg(p.text)));
-            let pad = w.saturating_sub(label_w + pill_w + 2);
-            spans.push(Span::raw(" ".repeat(pad)));
-            spans.push(Span::styled(" ‹ ", Style::default().fg(p.overlay0)));
-            spans.push(Span::styled("[", Style::default().fg(p.overlay0)));
-            spans.push(Span::styled(
-                glyph,
-                Style::default().fg(fg).add_modifier(Modifier::BOLD),
-            ));
-            spans.push(Span::styled("]", Style::default().fg(p.overlay0)));
-            spans.push(Span::styled(" ›", Style::default().fg(p.overlay0)));
-        }
-        ModalRow::Stepper {
-            label,
-            value,
-            unit,
-            ..
-        } => {
-            let val_str = if *value == 0 && unit.contains("tries") {
-                "Infinite (∞)".to_string()
-            } else {
-                format!("{value}{unit}")
-            };
-            let label_max = w.saturating_sub(width(&val_str) + 8);
-            let label = truncate(label, label_max);
-            let label_w = width(&label);
-            spans.push(Span::styled(label, Style::default().fg(p.text)));
-            let pad = w.saturating_sub(label_w + width(&val_str) + 8);
-            spans.push(Span::raw(" ".repeat(pad)));
-            spans.push(Span::styled(" ‹", Style::default().fg(p.accent).add_modifier(Modifier::BOLD)));
-            spans.push(Span::styled(
-                format!(" {val_str} "),
-                Style::default().fg(p.text).add_modifier(Modifier::BOLD),
-            ));
-            spans.push(Span::styled("› ", Style::default().fg(p.accent).add_modifier(Modifier::BOLD)));
-        }
-        ModalRow::Choice {
-            label,
-            options,
-            current,
-            searchable,
-            color,
-            ..
-        } => {
-
-            let value = options
-                .get(*current)
-                .map(|(l, _, _)| l.as_str())
-                .unwrap_or("");
-            let is_free = value.to_lowercase().contains("free");
-            let marker = if *searchable { " ▾" } else { "" };
-            let value_style = if *searchable {
-                Style::default().fg(p.accent).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(p.blue)
-            };
-            let label_style = if color.is_empty() {
-                Style::default().fg(p.text)
-            } else {
-                Style::default()
-                    .fg(crate::ui::mod_bridge::color_from_name(p, color))
-                    .add_modifier(Modifier::BOLD)
-            };
-            let has_arrows = !*searchable && options.len() > 1;
-            let val_display = if has_arrows {
-                format!("‹ {value} ›")
-            } else if *searchable && is_free {
-                let clean = value.trim_end_matches(" · free").trim_end_matches(" free");
-                format!("{clean} FREE{marker}")
-            } else {
-                format!("{value}{marker}")
-            };
-            let value_w = width(&val_display);
-            let label_max = w.saturating_sub(value_w + 2);
-            let label = truncate(label, label_max);
-            let label_w = width(&label);
-            spans.push(Span::styled(label, label_style));
-            let pad = w.saturating_sub(label_w + value_w + 2);
-            spans.push(Span::raw(" ".repeat(pad)));
-            if has_arrows {
-                spans.push(Span::styled("‹ ", Style::default().fg(p.overlay0)));
-                spans.push(Span::styled(value.to_string(), value_style));
-                spans.push(Span::styled(" ›", Style::default().fg(p.overlay0)));
-            } else if *searchable && is_free {
-                let clean = value.trim_end_matches(" · free").trim_end_matches(" free");
-                spans.push(Span::styled(
-                    clean.to_string(),
-                    Style::default().fg(p.text).add_modifier(Modifier::BOLD),
-                ));
-                spans.push(Span::raw(" "));
-                spans.push(Span::styled(
-                    "FREE",
-                    Style::default()
-                        .fg(p.green)
-                        .add_modifier(Modifier::BOLD),
-                ));
-                spans.push(Span::styled(
-                    marker.to_string(),
-                    Style::default().fg(p.accent).add_modifier(Modifier::BOLD),
-                ));
-            } else {
-                spans.push(Span::styled(val_display, value_style));
-            }
-        }
-        ModalRow::TextInput { label, value, .. } => {
-            let prefix = format!("{label}: ");
-
-            let value_w = w.saturating_sub(width(&prefix) + 1);
-            let value = truncate(value, value_w);
-            spans.push(Span::styled(prefix, Style::default().fg(p.text)));
-            spans.push(Span::styled(
-                format!("{value}█"),
-                Style::default().fg(p.accent).add_modifier(Modifier::BOLD),
-            ));
-        }
-        ModalRow::Info(text) => {
-
-            if text.contains('\x1b') {
-                spans.extend(ansi_spans(text, Style::default().fg(p.text)));
-            } else if let Some((key, val)) = text.split_once(": ") {
-                let key_span = Span::styled(format!("{}: ", key), Style::default().fg(p.subtext0));
-                let val_style = match key {
-                    k if k.contains("Cost") => {
-                        Style::default().fg(p.yellow).add_modifier(Modifier::BOLD)
-                    }
-                    k if k.contains("Token") || k.contains("Model") => {
-                        Style::default().fg(p.blue).add_modifier(Modifier::BOLD)
-                    }
-                    k if k.contains("Cache") => {
-                        Style::default().fg(p.green).add_modifier(Modifier::BOLD)
-                    }
-                    k if k.contains("Turns") => {
-                        Style::default().fg(p.mauve).add_modifier(Modifier::BOLD)
-                    }
-                    k if k.contains("YOLO") || k.contains("Auto-Approve") => {
-                        if val.contains("ON") {
-                            Style::default().fg(p.green).add_modifier(Modifier::BOLD)
-                        } else {
-                            Style::default().fg(p.red).add_modifier(Modifier::BOLD)
-                        }
-                    }
-                    _ => Style::default().fg(p.text),
-                };
-                spans.push(key_span);
-                spans.push(Span::styled(val.to_string(), val_style));
-            } else {
-                spans.push(Span::styled(
-                    text.clone(),
-                    Style::default().fg(p.overlay1),
-                ));
-            }
-        }
-        ModalRow::InfoColored { text, color } => {
-            let fg = color_from_name(&p, color);
-            spans.push(Span::styled(
-                text.clone(),
-                Style::default().fg(fg).add_modifier(Modifier::BOLD),
-            ));
-        }
-        ModalRow::Separator(title) => {
-            let title_w = width(title);
-            let dash_w = w.saturating_sub(title_w + 4);
-            spans.push(Span::styled("── ", Style::default().fg(p.surface1)));
-            spans.push(Span::styled(
-                title.clone(),
-                Style::default().fg(p.blue).add_modifier(Modifier::BOLD),
-            ));
-            spans.push(Span::styled(
-                format!(" {}", "─".repeat(dash_w)),
-                Style::default().fg(p.surface1),
-            ));
-        }
-        ModalRow::Progress {
-            label,
-            current,
-            total,
-        } => {
-            let total = (*total).max(1);
-            let pct = ((*current).min(total) * 100) / total;
-            let done = *current >= total;
-
-            let bar_w = 12usize.min(w.saturating_sub(12));
-            let filled = (pct * bar_w) / 100;
-            let bar: String = "█".repeat(filled) + &"░".repeat(bar_w.saturating_sub(filled));
-            let spin = if done { "✓" } else { spinner_frame };
-            let spin_style = if done {
-                Style::default().fg(p.green)
-            } else {
-                Style::default().fg(p.accent).add_modifier(Modifier::BOLD)
-            };
-            let label_w = w.saturating_sub(bar_w + 8);
-            let label = truncate(label, label_w);
-            spans.push(Span::styled(" ", Style::default()));
-            spans.push(Span::styled(spin.to_string(), spin_style));
-            spans.push(Span::styled(
-                format!(" {}  ", label),
-                Style::default().fg(p.text),
-            ));
-            let bar_style = if done {
-                Style::default().fg(p.green)
-            } else {
-                Style::default().fg(p.accent)
-            };
-            spans.push(Span::styled(bar, bar_style));
-            spans.push(Span::styled(
-                format!(" {}%", pct),
-                Style::default().fg(p.yellow).add_modifier(Modifier::BOLD),
-            ));
-        }
-        ModalRow::Table {
-            headers,
-            rows,
-            color,
-        } => {
-
-            let ncols = headers.len().max(rows.iter().map(|r| r.len()).max().unwrap_or(0));
-            if ncols == 0 {
-                return spans;
-            }
-            let mut col_w: Vec<usize> = (0..ncols)
-                .map(|c| {
-                    headers
-                        .get(c)
-                        .map(|h| width(h))
-                        .unwrap_or(0)
-                        .max(
-                            rows.iter()
-                                .filter_map(|r| r.get(c).map(|cell| width(cell)))
-                                .max()
-                                .unwrap_or(0),
-                        )
-                })
-                .collect();
-
-            let total_w: usize = col_w.iter().sum::<usize>() + (ncols.saturating_sub(1) * 2);
-            if total_w > w {
-                let mut over = total_w - w;
-                let mut order: Vec<usize> = (0..ncols).collect();
-                order.sort_by(|a, b| col_w[*b].cmp(&col_w[*a]));
-                for c in order {
-                    if over == 0 {
-                        break;
-                    }
-                    let cut = col_w[c].min(over);
-                    col_w[c] -= cut;
-                    over -= cut;
-                }
-            }
-            let header_style = role_color(p, color);
-            let header_line: Vec<Span> = (0..ncols)
-                .flat_map(|c| {
-                    let h = headers.get(c).map(|h| truncate(h, col_w[c])).unwrap_or_default();
-                    let mut v = vec![Span::styled(h, header_style)];
-                    if c + 1 < ncols {
-                        v.push(Span::raw("  "));
-                    }
-                    v
-                })
-                .collect();
-            spans.extend(header_line);
-            spans.push(Span::raw(" "));
-            for r in rows.iter().take(1) {
-                spans.push(Span::raw("\n"));
-                for c in 0..ncols {
-                    let cell = r.get(c).map(|cell| truncate(cell, col_w[c])).unwrap_or_default();
-                    let cell = format!(
-                        "{}{}",
-                        cell,
-                        " ".repeat(col_w[c].saturating_sub(width(&cell)))
-                    );
-                    spans.push(Span::styled(cell, Style::default().fg(p.text)));
-                    if c + 1 < ncols {
-                        spans.push(Span::raw("  "));
-                    }
-                }
-            }
-        }
-        ModalRow::Section { title, color } => {
-            let title_w = width(title);
-            let dash_w = w.saturating_sub(title_w + 4);
-            spans.push(Span::styled("── ", Style::default().fg(p.surface1)));
-            spans.push(Span::styled(title.clone(), role_color(p, color)));
-            spans.push(Span::styled(
-                format!(" {}", "─".repeat(dash_w)),
-                Style::default().fg(p.surface1),
-            ));
-        }
-    }
-    spans
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn wrapped_lines_counts_overflow_and_multiline() {
-
-        assert_eq!(row_wrapped_lines(&ModalRow::Info("hi".into()), 40), 1);
-
-        assert_eq!(row_wrapped_lines(&ModalRow::Info("x".repeat(100)), 40), 3);
-
-        assert_eq!(row_wrapped_lines(&ModalRow::Info("x".repeat(100)), 100), 1);
-
-        assert_eq!(row_wrapped_lines(&ModalRow::Info("line one\nline two".into()), 40), 2);
-
-        let ansi = "\u{1b}[32m● ON\u{1b}[0m";
-        assert_eq!(row_wrapped_lines(&ModalRow::Info(ansi.into()), 40), 1);
-
-        let long_ansi = format!("\u{1b}[32m{}\u{1b}[0m", "x".repeat(80));
-        assert_eq!(row_wrapped_lines(&ModalRow::Info(long_ansi), 40), 2);
-
-        let t = ModalRow::Table {
-            headers: vec!["h1".into(), "h2".into()],
-            rows: vec![vec!["a".into(), "b".into()]],
-            color: String::new(),
-        };
-        assert_eq!(row_wrapped_lines(&t, 40), 2);
+    fn modal_content_width_is_bounded_and_never_bloats() {
+        let area = Rect::new(0, 0, 140, 40);
+        let popup = modal_rect(area, 10, 0, 72).unwrap();
+        assert!(popup.width <= 76);
+        let popup_wide = modal_rect(area, 10, 0, 120).unwrap();
+        assert!(popup_wide.width <= 76);
     }
 }
-

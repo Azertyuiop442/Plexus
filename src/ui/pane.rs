@@ -7,7 +7,7 @@ use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::term::{Config as TermConfig, Term};
 
 pub use super::pane_tty::{
-    is_substantive_output, should_scroll_to_bottom, to_ratatui_color, tty_of_pid, TermSize,
+    is_substantive_output, pid_cwd, should_scroll_to_bottom, to_ratatui_color, tty_of_pid, TermSize,
 };
 pub use super::pane_render::{format_tokens, render_pane};
 pub use crate::ui::pane_state::BootInfo;
@@ -145,8 +145,21 @@ impl MuxPane {
             })
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
-        let mut cmd = portable_pty::CommandBuilder::new("sh");
-        cmd.args(["-lc", command]);
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+        let mut cmd = portable_pty::CommandBuilder::new(&shell);
+        for (k, v) in std::env::vars() {
+            cmd.env(k, v);
+        }
+        if command == shell
+            || command == "/bin/zsh"
+            || command == "zsh"
+            || command == "/bin/bash"
+            || command == "bash"
+        {
+            cmd.args(["-l"]);
+        } else {
+            cmd.args(["-lic", command]);
+        }
         let child = pair
             .slave
             .spawn_command(cmd)
@@ -241,14 +254,18 @@ impl MuxPane {
     }
 
     pub fn viewport_line_text(&self, vy: usize) -> String {
+        let offset = self.term.grid().display_offset();
+        let cols = self.term.columns();
+        let mut row = vec![' '; cols];
         let content = self.term.renderable_content();
-        let mut line_chars = Vec::new();
         for item in content.display_iter {
-            if item.point.line.0 == vy as i32 {
-                line_chars.push(item.cell.c);
+            if let Some(vp) = alacritty_terminal::term::point_to_viewport(offset, item.point) {
+                if vp.line as usize == vy && (vp.column.0 as usize) < cols {
+                    row[vp.column.0 as usize] = item.cell.c;
+                }
             }
         }
-        line_chars.into_iter().collect()
+        row.into_iter().collect()
     }
 
     pub(crate) fn session_id_from_cmd(cmd: &str) -> Option<String> {

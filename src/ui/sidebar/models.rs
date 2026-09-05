@@ -113,6 +113,7 @@ pub enum SidebarRow {
     PrefYolo,
     PrefShowUsage,
     PrefSounds,
+    PrefWebhook,
 
     ModConfig(usize),
     LiveBlockOpen(usize),

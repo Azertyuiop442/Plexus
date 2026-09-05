@@ -22,7 +22,6 @@ pub fn open_auto_retry_modal_with_prefs(
 
     let step1 = vec![
         ModalRow::Separator("Transient Error Targets".into()),
-        ModalRow::Info("Select transient errors to auto-retry. Permanent errors (401, 404, 400) are excluded.".into()),
         ModalRow::Toggle {
             key: "auto_retry.retry_rate_limit".into(),
             label: "Rate Limits (429) & Provider Quotas".into(),
@@ -48,7 +47,6 @@ pub fn open_auto_retry_modal_with_prefs(
             label: "Tool Execution Failures (Non-Fatal)".into(),
             enabled: ar.retry_tool_failure,
         },
-        ModalRow::Info("Press → or TAB for Retry Strategy".into()),
     ];
     m.add_step("1. Target Errors", step1);
 
@@ -72,9 +70,21 @@ pub fn open_auto_retry_modal_with_prefs(
             key: "auto_retry.backoff_mode".into(),
             label: "Backoff Algorithm".into(),
             options: vec![
-                ("Exponential Backoff (2s, 4s, 8s...)".into(), "exponential".into(), "backoff".into()),
-                ("Linear Backoff (2s, 4s, 6s...)".into(), "linear".into(), "backoff".into()),
-                ("Immediate (Fast retry)".into(), "immediate".into(), "backoff".into()),
+                (
+                    "Exponential Backoff (2s, 4s, 8s)".into(),
+                    "exponential".into(),
+                    "backoff".into(),
+                ),
+                (
+                    "Linear Backoff (2s, 4s, 6s)".into(),
+                    "linear".into(),
+                    "backoff".into(),
+                ),
+                (
+                    "Immediate (Fast retry)".into(),
+                    "immediate".into(),
+                    "backoff".into(),
+                ),
             ],
             current: match ar.backoff_mode.as_str() {
                 "linear" => 1,
@@ -107,7 +117,6 @@ pub fn open_auto_retry_modal_with_prefs(
             label: "Random Jitter (+/- 200ms anti-collision)".into(),
             enabled: ar.random_jitter,
         },
-        ModalRow::Info("Press → or TAB for Recovery Actions".into()),
     ];
     m.add_step("2. Retry Strategy", step2);
 
@@ -118,7 +127,6 @@ pub fn open_auto_retry_modal_with_prefs(
             label: "Recovery Prompt".into(),
             value: ar.prompt,
         },
-        ModalRow::Info("Prompt injected automatically into session upon transient error detection.".into()),
         ModalRow::Toggle {
             key: "auto_retry.show_countdown".into(),
             label: "Show Countdown Banner in Session".into(),
@@ -132,10 +140,7 @@ pub fn open_auto_retry_modal_with_prefs(
     ];
     m.add_step("3. Action & Prompt", step3);
 
-    m.commands.push(("save".into(), "Save & Close".into()));
-    m.hints.push(("←/→".into(), "Tabs / Adjust".into()));
-    m.hints.push(("Space".into(), "Toggle".into()));
-    m.hints.push(("Esc".into(), "Dismiss".into()));
+    m.set_page_size(8);
     m.select_first_selectable();
     state.active_modal = Some(m);
 }

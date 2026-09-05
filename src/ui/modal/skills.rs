@@ -5,9 +5,13 @@ use crate::ui::modal::model::{Modal, ModalRow};
 const MODAL_ID: &str = "skills_config";
 
 pub fn open_skills_modal(state: &mut AppState) {
-    state.skills_view.path.clear();
-    state.skills_view.selected_file = None;
+    let preserved_step = if is_skills_modal(state) {
+        current_step(state)
+    } else {
+        0
+    };
     let mut m = Modal::new(MODAL_ID, "Skills");
+    m.set_page_size(8);
     if let Some(path) = first_tracking_path() {
         if !path.as_os_str().is_empty() {
             m.persist_config = Some(path);
@@ -19,15 +23,16 @@ pub fn open_skills_modal(state: &mut AppState) {
     add_sources_step(&mut m);
     add_install_step(&mut m, &state.skills_view);
 
-    m.commands.push(("back".into(), "Back".into()));
-    m.commands.push(("refresh".into(), "Refresh".into()));
-    m.commands.push(("close".into(), "Close".into()));
-    m.hints.push(("Enter".into(), "Drill / Run".into()));
-    m.hints.push(("Tab".into(), "Next Tab".into()));
-    m.hints.push(("Esc".into(), "Dismiss".into()));
+    m.set_step(preserved_step);
     m.select_first_selectable();
-    skills::check_all_background(state.events.clone());
     state.active_modal = Some(m);
+}
+
+pub fn open_skills_modal_fresh(state: &mut AppState) {
+    state.skills_view.path.clear();
+    state.skills_view.selected_file = None;
+    skills::check_all_background(state.events.clone());
+    open_skills_modal(state);
 }
 
 fn first_tracking_path() -> Option<std::path::PathBuf> {
@@ -56,9 +61,6 @@ fn vendor_status_for(name: &str) -> VendorStatus {
 fn add_browse_step(m: &mut Modal, view: &crate::state::SkillsView) {
     let mut rows: Vec<ModalRow> = Vec::new();
     if view.path.is_empty() {
-        rows.push(ModalRow::Info(
-            "Vendors: each vendor folder is a git-tracked bundle of skills.".into(),
-        ));
         let statuses = skills::vendor_statuses();
         let status_by_name: std::collections::HashMap<String, VendorStatus> =
             statuses.into_iter().map(|s| (s.name.clone(), s)).collect();
@@ -74,15 +76,20 @@ fn add_browse_step(m: &mut Modal, view: &crate::state::SkillsView) {
                 color: vendor_status_color(&status).to_string(),
             });
         }
-        if rows.len() == 1 {
+        if rows.is_empty() {
             rows.push(ModalRow::Info(
-                "No vendor folders found. Create one under ~/.commandcode/skills/<vendor>/<skill>/SKILL.md".into(),
+                "No vendor folders found under ~/.commandcode/skills/".into(),
             ));
         }
     } else if view.path.len() == 1 {
         let vendor = &view.path[0];
         let status = vendor_status_for(vendor);
-        rows.push(ModalRow::Info(format!("Vendor: {vendor}  -  {}", vendor_status_short(&status))));
+        rows.push(ModalRow::Nav {
+            key: "vendor.back".into(),
+            label: "‹ Back to Vendors".into(),
+            color: "accent".into(),
+        });
+        rows.push(ModalRow::Separator(format!("{vendor}  -  {}", vendor_status_short(&status))));
         for skill in skills::discover_skills(vendor) {
             rows.push(ModalRow::Nav {
                 key: format!("skill.open.{vendor}.{}", skill.name),
@@ -94,14 +101,18 @@ fn add_browse_step(m: &mut Modal, view: &crate::state::SkillsView) {
         let vendor = &view.path[0];
         let skill_name = &view.path[1];
         let skills = skills::discover_skills(vendor);
+        rows.push(ModalRow::Nav {
+            key: "vendor.back".into(),
+            label: format!("‹ Back to {vendor}"),
+            color: "accent".into(),
+        });
         if let Some(skill) = skills.into_iter().find(|s| &s.name == skill_name) {
             let preview = skills::read_skill_md(&skill, 20);
-            rows.push(ModalRow::Info(format!(
-                "Skill: {vendor}/{skill_name}  -  {} files",
+            rows.push(ModalRow::Separator(format!(
+                "{skill_name}  -  {} files",
                 skill.extra_files.len()
             )));
             if !preview.is_empty() {
-                rows.push(ModalRow::Separator("SKILL.md preview".into()));
                 for line in preview.lines() {
                     rows.push(ModalRow::Info(line.to_string()));
                 }
@@ -132,13 +143,12 @@ fn add_tracker_step(m: &mut Modal, view: &crate::state::SkillsView) {
     let total = skills::discover_vendors().len();
     let tracked = statuses.iter().filter(|s| s.has_repo).count();
     let behind: usize = statuses.iter().filter(|s| s.is_stale()).count();
-    let untracked = total.saturating_sub(tracked);
     let errors = statuses
         .iter()
         .filter(|s| s.last_error.is_some() && s.has_repo)
         .count();
     rows.push(ModalRow::Info(format!(
-        "Total: {total}  Tracked: {tracked}  Behind: {behind}  Untracked: {untracked}  Errors: {errors}"
+        "{tracked}/{total} tracked · {behind} outdated · {errors} errors"
     )));
     if let Some(summary) = &view.last_update_summary {
         rows.push(ModalRow::Info(format!("Last update: {summary}")));
@@ -152,15 +162,17 @@ fn add_tracker_step(m: &mut Modal, view: &crate::state::SkillsView) {
         if let Some(last) = &upd.last_result {
             rows.push(ModalRow::Info(format!("  {last}")));
         }
-    } else {
-        rows.push(ModalRow::Toggle {
+    } else if behind > 0 {
+        rows.push(ModalRow::Nav {
             key: "update_all".into(),
-            label: format!("Update All Behind  ({behind} vendor{})", if behind == 1 { "" } else { "s" }),
-            enabled: behind == 0,
+            label: format!("Update All Behind ({behind} vendor{})", if behind == 1 { "" } else { "s" }),
+            color: "accent".into(),
         });
+    } else {
+        rows.push(ModalRow::Info("✓ All tracked skill bundles are up to date".into()));
     }
     if behind > 0 {
-        rows.push(ModalRow::Separator("Stale vendors".into()));
+        rows.push(ModalRow::Separator("Outdated vendors".into()));
         for s in statuses.iter().filter(|s| s.is_stale()) {
             rows.push(ModalRow::Info(format!(
                 "  {}  (+{} behind)",
@@ -178,17 +190,11 @@ fn add_tracker_step(m: &mut Modal, view: &crate::state::SkillsView) {
             )));
         }
     }
-    m.add_step("2. Tracker", rows);
+    m.add_step("2. Track", rows);
 }
 
 fn add_sources_step(m: &mut Modal) {
     let mut rows: Vec<ModalRow> = Vec::new();
-    rows.push(ModalRow::Info(
-        "Paste a git repository URL per vendor to track and check for updates.".into(),
-    ));
-    rows.push(ModalRow::Info(
-        "Example: https://github.com/addyosmani/agent-skills.git or user/repo".into(),
-    ));
     let statuses = skills::vendor_statuses();
     let status_by_name: std::collections::HashMap<String, VendorStatus> =
         statuses.into_iter().map(|s| (s.name.clone(), s)).collect();
@@ -198,20 +204,15 @@ fn add_sources_step(m: &mut Modal) {
             .cloned()
             .unwrap_or_else(|| vendor_status_for(&vendor));
         let current = status.url.clone().unwrap_or_default();
-        rows.push(ModalRow::Info(format!(
-            "  {}  -  {}",
-            vendor,
-            vendor_status_short(&status)
-        )));
         rows.push(ModalRow::TextInput {
             key: format!("url.{vendor}"),
-            label: format!("{vendor} URL"),
+            label: format!("{vendor} ({})", vendor_status_short(&status)),
             value: current,
         });
     }
     if skills::discover_vendors().is_empty() {
         rows.push(ModalRow::Info(
-            "No vendor folders yet. Create ~/.commandcode/skills/<vendor>/<skill>/SKILL.md first.".into(),
+            "No vendor folders found in ~/.commandcode/skills/".into(),
         ));
     }
     m.add_step("3. Sources", rows);
@@ -219,12 +220,6 @@ fn add_sources_step(m: &mut Modal) {
 
 fn add_install_step(m: &mut Modal, view: &crate::state::SkillsView) {
     let mut rows: Vec<ModalRow> = Vec::new();
-    rows.push(ModalRow::Info(
-        "Download & install a skill bundle directly from any GitHub repository.".into(),
-    ));
-    rows.push(ModalRow::Info(
-        "Example: https://github.com/addyosmani/agent-skills.git or user/repo".into(),
-    ));
     if let Some(msg) = &view.last_update_summary {
         let color = if msg.starts_with('✓') { "green" } else { "red" };
         rows.push(ModalRow::InfoColored {
@@ -242,18 +237,18 @@ fn add_install_step(m: &mut Modal, view: &crate::state::SkillsView) {
         label: "Vendor Name (Optional)".into(),
         value: String::new(),
     });
-    rows.push(ModalRow::Toggle {
+    rows.push(ModalRow::Nav {
         key: "install.action".into(),
-        label: "> Download & Install Skills".into(),
-        enabled: false,
+        label: "Download & Install Skills".into(),
+        color: "accent".into(),
     });
-    m.add_step("4. Install", rows);
+    m.add_step("4. Add", rows);
 }
 
 fn vendor_browse_label(vendor: &str, count: usize, status: &VendorStatus) -> String {
     let badge = vendor_status_short(status);
     let plural = if count == 1 { "skill" } else { "skills" };
-    format!("{vendor}  ({count} {plural})  -  {badge}")
+    format!("{vendor}  ({count} {plural})  ·  {badge}")
 }
 
 fn skill_browse_label(skill: &SkillEntry) -> String {
@@ -265,7 +260,7 @@ fn skill_browse_label(skill: &SkillEntry) -> String {
     } else {
         format!("{n} files")
     };
-    format!("{}  -  {}", skill.name, extra)
+    format!("{}  ·  {}", skill.name, extra)
 }
 
 fn vendor_status_color(status: &VendorStatus) -> &'static str {

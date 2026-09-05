@@ -143,6 +143,7 @@ pub struct Sidebar {
     pub show_usage: bool,
     pub sound_notifications: bool,
     pub auto_retry_enabled: bool,
+    pub webhook_enabled: bool,
     pub skills_update_count: usize,
 
     pub live_blocks: Vec<LiveBlock>,
@@ -209,6 +210,7 @@ impl Sidebar {
             show_usage: true,
             sound_notifications: true,
             auto_retry_enabled: true,
+            webhook_enabled: false,
             skills_update_count: 0,
             live_blocks: Vec::new(),
             available_update: None,
@@ -226,6 +228,7 @@ impl Sidebar {
         s.show_usage = prefs.show_usage;
         s.sound_notifications = prefs.sounds.enabled;
         s.auto_retry_enabled = prefs.auto_retry.enabled;
+        s.webhook_enabled = prefs.webhook.enabled;
         s.skills_update_count = crate::skills::count_updates();
         let config = fs::read_to_string(Path::new(&bridge_data_dir()).join("config.json"))
             .ok()
@@ -288,8 +291,6 @@ impl Sidebar {
                 self.rows.push(SidebarRow::NavPreferences);
                 self.rows.push(SidebarRow::NavModConfig);
                 self.rows.push(SidebarRow::NavAIPrefs);
-                self.rows.push(SidebarRow::Reload);
-                self.rows.push(SidebarRow::BugReport);
 
                 self.rows.push(SidebarRow::NewSession);
                 if !self.sessions.is_empty() {
@@ -317,6 +318,7 @@ impl Sidebar {
                 self.rows.push(SidebarRow::PrefYolo);
                 self.rows.push(SidebarRow::PrefShowUsage);
                 self.rows.push(SidebarRow::PrefSounds);
+                self.rows.push(SidebarRow::PrefWebhook);
             }
             SettingsSubMenu::ModConfig => {
                 self.rows.push(SidebarRow::NavBack);

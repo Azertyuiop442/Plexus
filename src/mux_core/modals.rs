@@ -282,9 +282,6 @@ pub fn open_mod_config_modal(state: &mut AppState, idx: usize) {
             label: "Master Enable".into(),
             enabled: mod_item.enabled,
         });
-        m.rows.push(ModalRow::Info(
-            "Press ESC or ENTER to save and close".into(),
-        ));
 
         m.select_first_selectable();
         state.active_modal = Some(m);
@@ -385,9 +382,8 @@ pub fn open_full_config_modal(state: &mut AppState) {
             searchable: false,
             color: String::new(),
         },
-        ModalRow::Info("Press → or TAB for Security & Privacy".into()),
     ];
-    m.add_step("1. Core & Auth", step1);
+    m.add_step("1. Core", step1);
 
     let perm_mode = json
         .get("permissionMode")
@@ -491,9 +487,8 @@ pub fn open_full_config_modal(state: &mut AppState) {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(true),
         },
-        ModalRow::Info("Press → or TAB for Export & Advanced".into()),
     ];
-    m.add_step("2. Security & Privacy", step2);
+    m.add_step("2. Security", step2);
 
     let export_fmt = json
         .get("defaultExportFormat")
@@ -608,9 +603,8 @@ pub fn open_full_config_modal(state: &mut AppState) {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false),
         },
-        ModalRow::Info("Press ESC or ENTER to save and close".into()),
     ];
-    m.add_step("3. Export & Advanced", step3);
+    m.add_step("3. Export", step3);
 
     let feature_models = json
         .get("featureModels")
@@ -660,10 +654,7 @@ pub fn open_full_config_modal(state: &mut AppState) {
             color: String::new(),
         });
     }
-    step4.push(ModalRow::Info(
-        "Left/Right on a row = inline cycle; Enter = searchable picker.".into(),
-    ));
-    m.add_step("4. Feature Models", step4);
+    m.add_step("4. Models", step4);
 
     m.set_page_size(8);
     m.select_first_selectable();
@@ -836,7 +827,7 @@ fn pricing_model_choices() -> Vec<(String, String, String)> {
             Entry {
                 id: free_id.to_string(),
                 label: free_label.to_string(),
-                category: "free".to_string(),
+                category: "open".to_string(),
                 free: true,
                 order: 0,
             },
@@ -850,12 +841,24 @@ fn pricing_model_choices() -> Vec<(String, String, String)> {
         let input_price = m.get("inputPerM").and_then(|v| v.as_f64()).unwrap_or(1.0);
         let is_free_row = free || input_price == 0.0;
         let key = base_model_key(id);
+        let is_commercial = id.starts_with("claude")
+            || id.starts_with("gpt-")
+            || id.starts_with("o1-")
+            || id.starts_with("o3-")
+            || id.starts_with("o4-")
+            || id.starts_with("openai/")
+            || id.starts_with("anthropic/")
+            || id.starts_with("google/")
+            || id.starts_with("cohere/")
+            || id.contains("/claude-")
+            || id.contains("/gpt-");
+        let default_cat = if is_commercial { "commercial" } else { "open" };
         let raw_cat = m
             .get("category")
             .and_then(|v| v.as_str())
-            .unwrap_or("open")
+            .unwrap_or(default_cat)
             .to_string();
-        let cat = if is_free_row { "free".to_string() } else { raw_cat };
+        let cat = if is_free_row && raw_cat != "commercial" { "open".to_string() } else { raw_cat };
         let entry = Entry {
             id: id.to_string(),
             label: short_model_label(id),
@@ -877,12 +880,7 @@ fn pricing_model_choices() -> Vec<(String, String, String)> {
     let mut rows: Vec<Entry> = best.into_values().collect();
     rows.sort_by(|a, b| a.order.cmp(&b.order));
     for e in rows {
-        let label = if e.free && !e.label.to_lowercase().contains("free") {
-            format!("{} · free", e.label)
-        } else {
-            e.label
-        };
-        out.push((label, e.id, e.category));
+        out.push((e.label, e.id, e.category));
     }
     out
 }
@@ -1236,6 +1234,22 @@ pub fn sync_modal_toggles(state: &mut AppState) {
                 let prefs = crate::prefs::Prefs::load();
                 state.sidebar.sound_notifications = prefs.sounds.enabled;
             }
+            if modal.id == "webhook_config" {
+                let prefs = crate::prefs::Prefs::load();
+                let prev_enabled = state.sidebar.webhook_enabled;
+                state.sidebar.webhook_enabled = prefs.webhook.enabled;
+                if prefs.webhook.enabled && !prev_enabled {
+                    let session = state
+                        .panes
+                        .get(state.active)
+                        .and_then(|p| p.lock().ok())
+                        .map(|p| p.state.title.clone())
+                        .unwrap_or_else(|| "Terminal 1".to_string());
+                    let workspace = state.active_workspace();
+                    let payload = crate::webhook::build_standby_payload(&prefs.webhook, &session, &workspace);
+                    crate::webhook::dispatch_async(prefs.webhook.url, prefs.webhook.format, payload);
+                }
+            }
         }
     }
 }
@@ -1252,8 +1266,6 @@ pub fn open_keybind_help_modal(state: &mut AppState) {
         ModalRow::Info("  Ctrl+1..9         Direct jump to tab N".into()),
         ModalRow::Info("  Ctrl+B            Toggle sidebar collapse/expand".into()),
         ModalRow::Info("  Ctrl+N            Terminal Navigator jump list".into()),
-        ModalRow::Info(String::new()),
-        ModalRow::Info("Press → or TAB for Search & Controls".into()),
     ];
     m.add_step("1. Tabs & Windows", step1);
 
@@ -1264,8 +1276,6 @@ pub fn open_keybind_help_modal(state: &mut AppState) {
         ModalRow::Info("  Ctrl+E            Rename active terminal title".into()),
         ModalRow::Info("  PgUp / PgDn       Scroll terminal buffer up/down".into()),
         ModalRow::Info("  Cmd+P / ?         Open Keyboard Shortcuts help".into()),
-        ModalRow::Info(String::new()),
-        ModalRow::Info("Press → or TAB for Sidebar & Actions".into()),
     ];
     m.add_step("2. Search & Controls", step2);
 

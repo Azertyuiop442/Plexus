@@ -21,8 +21,6 @@ impl InfoModalWidget {
         for (label, val) in &self.fields {
             m.rows.push(ModalRow::Info(format!("{}: {}", label, val)));
         }
-        m.rows
-            .push(ModalRow::Info("Press ESC or ENTER to close".to_string()));
         m
     }
 }

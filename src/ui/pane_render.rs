@@ -118,6 +118,7 @@ pub fn render_pane(
     bridge_stale: bool,
     show_cost_bar: bool,
     mod_known: bool,
+    hover_image: Option<&crate::state::HoverImage>,
 ) {
     if area.width < 3 || area.height < 3 {
         return;
@@ -418,6 +419,57 @@ pub fn render_pane(
             if !same_glyph || tcell.style() != style {
                 tcell.set_char(cell.c);
                 tcell.set_style(style);
+            }
+        }
+    }
+
+    for y in bh..pty_h {
+        let gy = content_area.top() + y;
+        if gy >= buf.area().bottom() {
+            break;
+        }
+
+        let mut has_bracket = false;
+        for x in 0..content_area.width {
+            let gx = content_area.left() + x;
+            if gx < buf.area().right() && buf[(gx, gy)].symbol() == "[" {
+                has_bracket = true;
+                break;
+            }
+        }
+        if !has_bracket {
+            continue;
+        }
+
+        let line_str: String = (0..content_area.width)
+            .map(|x| {
+                let gx = content_area.left() + x;
+                if gx < buf.area().right() {
+                    buf[(gx, gy)].symbol().chars().next().unwrap_or(' ')
+                } else {
+                    ' '
+                }
+            })
+            .collect();
+
+        if line_str.contains("[Image #") {
+            for (start_col, end_col, idx) in crate::ui::links::detect_image_tokens(&line_str) {
+                let p = Palette::dark();
+                let is_hovered = hover_image
+                    .map(|h| h.index == idx && h.screen_y == gy)
+                    .unwrap_or(false);
+                for col in start_col..=end_col {
+                    let gx = content_area.left() + col as u16;
+                    if gx < buf.area().right() {
+                        let cell = &mut buf[(gx, gy)];
+                        let mut st = cell.style();
+                        st = st.fg(p.accent).add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
+                        if is_hovered {
+                            st = st.bg(p.surface1);
+                        }
+                        cell.set_style(st);
+                    }
+                }
             }
         }
     }

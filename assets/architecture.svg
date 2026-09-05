@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 520" width="100%" role="img" aria-labelledby="arch-title arch-desc">
-  <title id="arch-title">Plexus architecture — a native shell decoupled from its mods</title>
+  <title id="arch-title">Plexus architecture - a native shell decoupled from its mods</title>
   <desc id="arch-desc">Plexus TUI shell talks to custom mods through a JSON file-IPC bridge in /tmp/cc-sidebar; mods push state into the bridge, the shell renders it and dispatches user actions.</desc>
   <defs>
     <style><![CDATA[
@@ -28,7 +28,7 @@
   <!-- Header (centered) -->
   <text x="500" y="54" class="eyebrow" text-anchor="middle">Architecture · Plexus</text>
   <text x="500" y="92" class="title" text-anchor="middle">One shell, decoupled from its mods.</text>
-  <text x="500" y="116" class="sub" text-anchor="middle">Standalone Rust TUI  ·  file-IPC bridge  ·  any-runtime mods</text>
+  <text x="500" y="116" class="sub" text-anchor="middle">Standalone Rust TUI  ·  file-IPC bridge  ·  TypeScript mods</text>
 
   <!-- Zone: the file-IPC bridge protocol -->
   <rect x="320" y="128" width="360" height="212" rx="10" fill="rgba(245,245,245,0.02)" stroke="rgba(245,245,245,0.10)" stroke-width="0.8"/>
@@ -75,7 +75,7 @@
   <text x="740" y="193" class="tag" fill="#8e98ac" text-anchor="middle">MOD</text>
   <text x="920" y="256" class="ghost" fill="rgba(245,245,245,0.06)" text-anchor="end">03</text>
   <text x="824" y="234" class="node-name" text-anchor="middle">Your Mods</text>
-  <text x="824" y="250" class="node-sub" text-anchor="middle">python · node · go · rust</text>
+  <text x="824" y="250" class="node-sub" text-anchor="middle">typescript</text>
 
   <!-- Legend (centered) -->
   <g transform="translate(119, 0)">

@@ -8,8 +8,6 @@ use crossterm::execute;
 use crate::state::AppState;
 use crate::ui::pane::MuxPane;
 
-use super::pane_ops::active_pane_size;
-
 pub fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
@@ -152,58 +150,76 @@ pub fn reload_mux() {
     std::process::exit(1);
 }
 
-pub fn change_pane_cwd(state: &mut AppState) {
+static FOLDER_PICKER_ACTIVE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
+#[cfg(target_os = "macos")]
+fn select_folder_dialog() -> Option<String> {
     let script = r#"POSIX path of (choose folder with prompt "Choose working directory")"#;
     let out = std::process::Command::new("osascript")
         .args(["-e", script])
-        .output();
-    let Ok(out) = out else {
-        return;
-    };
+        .output()
+        .ok()?;
     if !out.status.success() {
-        return;
+        return None;
     }
     let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
     if path.is_empty() || !std::path::Path::new(&path).is_dir() {
+        return None;
+    }
+    Some(path)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn select_folder_dialog() -> Option<String> {
+    let out = std::process::Command::new("zenity")
+        .args(["--file-selection", "--directory", "--title=Choose working directory"])
+        .output()
+        .ok();
+    if let Some(out) = out {
+        if out.status.success() {
+            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !path.is_empty() && std::path::Path::new(&path).is_dir() {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+pub fn change_pane_cwd(state: &mut AppState) {
+    if FOLDER_PICKER_ACTIVE
+        .compare_exchange(
+            false,
+            true,
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst,
+        )
+        .is_err()
+    {
         return;
     }
 
     let Some(pane) = state.panes.get(state.active) else {
+        FOLDER_PICKER_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
         return;
     };
-    let (cols, rows) = active_pane_size(state);
-    let cmd = format!("cd {} && commandcode", shell_quote(&path));
-    if let Ok((new_pane, reader)) = MuxPane::spawn(&cmd, cols, rows) {
+    let gen = pane.lock().unwrap_or_else(|e| e.into_inner()).state.gen;
+    let events = state.events.clone();
 
-        let keep_title = pane.lock().unwrap_or_else(|e| e.into_inner()).state.title.clone();
-        pane.lock().unwrap_or_else(|e| e.into_inner()).kill();
-        {
-            let mut np = new_pane.lock().unwrap_or_else(|e| e.into_inner());
-            np.state.title = keep_title;
+    std::thread::spawn(move || {
+        struct PickerGuard;
+        impl Drop for PickerGuard {
+            fn drop(&mut self) {
+                FOLDER_PICKER_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+            }
         }
-        state.panes[state.active] = new_pane.clone();
-        std::thread::spawn(move || {
-            use std::io::Read as _;
-            let mut reader = reader;
-            let mut buf = [0u8; 16384];
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        if let Ok(mut p) = new_pane.lock() {
-                            p.feed(&buf[..n]);
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-            if let Ok(mut p) = new_pane.lock() {
-                p.state.exited = true;
-            }
-        });
-        state.dirty = true;
-    }
+        let _guard = PickerGuard;
+
+        if let Some(path) = select_folder_dialog() {
+            let _ = events.send(crate::mux_events::MuxEvent::ChangeWorkspaceDir { gen, path });
+        }
+    });
 }
 
 #[cfg(test)]

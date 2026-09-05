@@ -5,6 +5,7 @@ use std::sync::mpsc;
 pub enum MuxEvent {
     PtyOutput { gen: u64, bytes: Vec<u8> },
     PaneExited { gen: u64 },
+    ChangeWorkspaceDir { gen: u64, path: String },
     UpdateAvailable { version: String },
     UpdateProgress { label: String, current: usize, total: usize },
     UpdateCompleted { success: bool, error: Option<String> },

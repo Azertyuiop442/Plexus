@@ -115,6 +115,7 @@ mod tests {
             show_usage: true,
             sound_notifications: true,
             auto_retry_enabled: true,
+            webhook_enabled: false,
             skills_update_count: 0,
             live_blocks: Vec::new(),
             available_update: None,

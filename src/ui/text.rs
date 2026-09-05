@@ -5,6 +5,19 @@ pub fn width(s: &str) -> usize {
     UnicodeWidthStr::width(s)
 }
 
+pub fn current_system_time() -> String {
+    let now = std::time::SystemTime::now();
+    let epoch = now
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as libc::time_t)
+        .unwrap_or(0);
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    unsafe {
+        libc::localtime_r(&epoch, &mut tm);
+    }
+    format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
+}
+
 pub fn truncate(s: &str, max: usize) -> String {
     if width(s) <= max {
         return s.to_string();
@@ -80,6 +93,17 @@ mod tests {
     fn truncate_no_op_when_fits() {
         assert_eq!(truncate("hello", 10), "hello");
         assert_eq!(truncate("", 5), "");
+    }
+
+    #[test]
+    fn current_system_time_is_valid_format() {
+        let t = current_system_time();
+        assert_eq!(t.len(), 5);
+        assert_eq!(&t[2..3], ":");
+        let h: u32 = t[0..2].parse().unwrap();
+        let m: u32 = t[3..5].parse().unwrap();
+        assert!(h < 24);
+        assert!(m < 60);
     }
 }
 

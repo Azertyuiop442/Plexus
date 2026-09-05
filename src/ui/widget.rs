@@ -307,6 +307,29 @@ pub fn render_scrollbar(
     }
 }
 
+pub fn render_drop_shadow(buf: &mut ratatui::buffer::Buffer, popup: Rect, screen: Rect) {
+    let shadow_color = Palette::dark().shadow;
+    let right_x = popup.x + popup.width;
+    let bottom_y = popup.y + popup.height;
+
+    if right_x < screen.width {
+        let max_y = bottom_y.min(screen.height.saturating_sub(1));
+        for y in (popup.y + 1)..=max_y {
+            let cell = &mut buf[(right_x, y)];
+            cell.set_bg(shadow_color);
+            cell.set_style(cell.style().add_modifier(Modifier::DIM));
+        }
+    }
+    if bottom_y < screen.height {
+        let max_x = right_x.min(screen.width.saturating_sub(1));
+        for x in (popup.x + 1)..=max_x {
+            let cell = &mut buf[(x, bottom_y)];
+            cell.set_bg(shadow_color);
+            cell.set_style(cell.style().add_modifier(Modifier::DIM));
+        }
+    }
+}
+
 pub fn render_modal_shell(
     frame: &mut Frame,
     area: Rect,
@@ -315,7 +338,8 @@ pub fn render_modal_shell(
     _p: &Palette,
 ) -> Option<Rect> {
     let popup = centered_popup_rect(area, popup_w, popup_h)?;
-    let pitch_black = Color::Rgb(0, 0, 0);
+    render_drop_shadow(frame.buffer_mut(), popup, area);
+    let pitch_black = crate::theme::BG;
     let border_blue = Palette::dark().blue;
     let block = Block::default()
         .borders(Borders::ALL)

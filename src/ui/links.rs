@@ -9,6 +9,10 @@ pub enum Hit {
         line: Option<u32>,
         col: Option<u32>,
     },
+
+    ImageAttachment {
+        index: usize,
+    },
 }
 
 const KNOWN_TLDS: &[&str] = &[
@@ -21,9 +25,49 @@ fn is_boundary(c: char) -> bool {
     c.is_whitespace() || c == '"' || c == '\'' || c == '`' || c == '<' || c == '>' || c == '(' || c == ')' || c == '[' || c == ']' || c == '{' || c == '}' || c == '|'
 }
 
+pub fn detect_image_tokens(line: &str) -> Vec<(usize, usize, usize)> {
+    let mut results = Vec::new();
+    let mut cursor = 0;
+    while let Some(start_idx) = line[cursor..].find("[Image #") {
+        let actual_start = cursor + start_idx;
+        let rest = &line[actual_start + 8..];
+        if let Some(end_rel) = rest.find(']') {
+            let num_str = &rest[..end_rel];
+            if !num_str.is_empty() && num_str.chars().all(|c| c.is_ascii_digit()) {
+                if let Ok(idx) = num_str.parse::<usize>() {
+                    let actual_end = actual_start + 8 + end_rel;
+                    let char_start = line[..actual_start].chars().count();
+                    let char_end = line[..=actual_end].chars().count().saturating_sub(1);
+                    results.push((char_start, char_end, idx));
+                }
+            }
+            cursor = actual_start + 8 + end_rel + 1;
+        } else {
+            break;
+        }
+    }
+    results
+}
+
+pub fn image_token_at(line: &str, col: usize) -> Option<(usize, usize, usize)> {
+    if line.is_empty() {
+        return None;
+    }
+    for (start, end, idx) in detect_image_tokens(line) {
+        if col >= start && col <= end {
+            return Some((start, end, idx));
+        }
+    }
+    None
+}
+
 pub fn link_at(line: &str, col: usize) -> Option<Hit> {
     if line.is_empty() {
         return None;
+    }
+
+    if let Some((_, _, idx)) = image_token_at(line, col) {
+        return Some(Hit::ImageAttachment { index: idx });
     }
 
     let chars: Vec<char> = line.chars().collect();
@@ -308,6 +352,19 @@ mod tests {
         assert!(url.contains("Plexus+Version"));
         assert!(url.contains(env!("CARGO_PKG_VERSION")));
         assert!(url.contains(std::env::consts::OS));
+    }
+
+    #[test]
+    fn test_detect_image_tokens() {
+        let line = "Look at this [Image #1] and also [Image #42]!";
+        let tokens = detect_image_tokens(line);
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens[0], (13, 22, 1));
+        assert_eq!(tokens[1], (33, 43, 42));
+        assert_eq!(image_token_at(line, 15), Some((13, 22, 1)));
+        assert_eq!(link_at(line, 15), Some(Hit::ImageAttachment { index: 1 }));
+        assert_eq!(link_at(line, 35), Some(Hit::ImageAttachment { index: 42 }));
+        assert_eq!(link_at(line, 5), None);
     }
 }
 

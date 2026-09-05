@@ -12,6 +12,7 @@ pub mod borders;
 pub mod cmdinfo;
 pub mod context_menu;
 pub mod glyph;
+pub mod image_tooltip;
 pub mod links;
 pub mod mod_bridge;
 pub mod mod_panel;
@@ -87,7 +88,6 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
 
     let tab_h = 1u16;
     let tab_bar_area = Rect::new(main_area.x, main_area.y, main_area.width, tab_h);
-    tab_bar::render_tab_bar(frame, tab_bar_area, &state.panes, state.active);
 
     let pane_area = Rect::new(
         main_area.x,
@@ -116,6 +116,8 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
             )]);
             frame.buffer_mut().set_line(pane_area.left(), pane_area.top(), &line, pane_area.width);
         }
+
+        tab_bar::render_tab_bar(frame, tab_bar_area, &state.panes, state.active);
 
         if let Some(ref modal) = state.active_modal {
             modal::render_modal(frame, area, modal, &pal);
@@ -180,6 +182,7 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
             bridge_stale,
             state.sidebar.show_cost_bar,
             mod_known,
+            state.hover_image.as_ref(),
         );
 
         let banner_h = if state.picker.is_some() {
@@ -203,13 +206,25 @@ pub fn render(frame: &mut Frame, state: &mut AppState) {
         }
     }
 
+    tab_bar::render_tab_bar(frame, tab_bar_area, &state.panes, state.active);
+
+    if let Some(ref hover) = state.hover_image {
+        let session_id = state
+            .panes
+            .get(state.active)
+            .and_then(|p| p.lock().ok())
+            .and_then(|p| p.state.session_id.clone());
+        image_tooltip::render_image_tooltip(frame, hover, area, session_id.as_deref());
+    }
+
     if let Some(ref modal) = state.active_modal {
         modal::render_modal(frame, area, modal, &pal);
     }
 
     if let Some(ref picker_state) = state.picker {
-        let visible = picker_state.picker.filtered_indices().len().min(14);
-        let popup = modal::modal_rect(area, visible + 4, 0, 56).unwrap_or(Rect::new(
+        let visible = picker_state.picker.filtered_indices().len().min(14).max(4);
+        let picker_w = 68u16.min(area.width.saturating_sub(4)).max(56);
+        let popup = modal::modal_rect(area, visible + 4, 0, picker_w).unwrap_or(Rect::new(
             area.x + area.width / 4,
             area.y + area.height / 4,
             area.width / 2,

@@ -88,6 +88,12 @@ fn handle_skills_back(state: &mut AppState) {
 }
 
 fn handle_skills_browse(state: &mut AppState, key: &str) {
+    if key == "vendor.back" {
+        state.skills_view.path.pop();
+        state.skills_view.selected_file = None;
+        crate::ui::modal::open_skills_modal(state);
+        return;
+    }
     if let Some(rest) = key.strip_prefix("vendor.open.") {
         state.skills_view.path.clear();
         state.skills_view.path.push(rest.to_string());
@@ -252,6 +258,53 @@ fn write_pickup_and_close(state: &mut AppState) {
 pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cmd: &str) {
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+
+    let is_open_image = (ctrl || key.modifiers.contains(KeyModifiers::SUPER))
+        && (key.code == KeyCode::Char('o') || key.code == KeyCode::Char('O'));
+
+    if state.hover_image.is_some() {
+        if key.code == KeyCode::Esc {
+            state.hover_image = None;
+            state.dirty = true;
+            return;
+        }
+        if !is_open_image {
+            state.hover_image = None;
+            state.dirty = true;
+        }
+    }
+
+    if is_open_image {
+        let active_session = state
+            .panes
+            .get(state.active)
+            .and_then(|p| p.lock().ok())
+            .and_then(|p| p.state.session_id.clone());
+
+        if let Some(ref hover) = state.hover_image {
+            crate::ui::image_tooltip::open_image_attachment(hover.index, active_session.as_deref());
+            return;
+        }
+
+        if let Some(pane) = state.panes.get(state.active) {
+            if let Ok(p) = pane.lock() {
+                let pty_h = p.term.screen_lines();
+                let mut found_index = None;
+                for y in (0..pty_h).rev() {
+                    let line = p.viewport_line_text(y);
+                    let tokens = crate::ui::links::detect_image_tokens(&line);
+                    if let Some((_, _, idx)) = tokens.last() {
+                        found_index = Some(*idx);
+                        break;
+                    }
+                }
+                if let Some(idx) = found_index {
+                    crate::ui::image_tooltip::open_image_attachment(idx, active_session.as_deref());
+                    return;
+                }
+            }
+        }
+    }
 
     let panel_active = state.panel_sidebar_open || state.panel_maximized;
     if panel_active && state.panel_focused {
@@ -581,6 +634,21 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
         return;
     }
 
+    if key.code == KeyCode::Esc {
+        if let Some(modal) = state.active_modal.as_mut() {
+            if modal.editing_text {
+                modal.editing_text = false;
+                return;
+            }
+        }
+        if crate::ui::modal::skills::is_skills_modal(state) && !state.skills_view.path.is_empty() {
+            state.skills_view.path.pop();
+            state.skills_view.selected_file = None;
+            crate::ui::modal::open_skills_modal(state);
+            return;
+        }
+    }
+
     if let Some(ref mut modal) = state.active_modal {
         let is_all_sessions = modal.id == "all_sessions";
 
@@ -602,7 +670,6 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
         match key.code {
             KeyCode::Esc => {
                 if modal.editing_text {
-
                     modal.editing_text = false;
                     return;
                 }
@@ -740,6 +807,9 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                     return;
                 } else if modal.id == "sounds_config" {
                     crate::ui::modal::sounds::handle_sounds_modal_enter(state);
+                    return;
+                } else if modal.id == "webhook_config" {
+                    crate::ui::modal::webhook::handle_webhook_modal_enter(state);
                     return;
                 } else if modal.id.starts_with("list_") {
 
@@ -1456,11 +1526,15 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                     return;
                 }
                 Some(SidebarRow::PrefSkills) => {
-                    crate::ui::modal::open_skills_modal(state);
+                    crate::ui::modal::open_skills_modal_fresh(state);
                     return;
                 }
                 Some(SidebarRow::PrefSounds) => {
                     crate::ui::modal::open_sounds_modal(state);
+                    return;
+                }
+                Some(SidebarRow::PrefWebhook) => {
+                    crate::ui::modal::open_webhook_modal(state);
                     return;
                 }
                 Some(SidebarRow::PrefSkillInjection) => {
@@ -1553,6 +1627,9 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, command: &str, new_tab_cm
                 }
                 Some(SidebarRow::PrefSounds) => {
                     crate::ui::modal::open_sounds_modal(state);
+                }
+                Some(SidebarRow::PrefWebhook) => {
+                    crate::ui::modal::open_webhook_modal(state);
                 }
                 Some(SidebarRow::ModConfig(idx)) => {
                     open_mod_config_modal(state, idx);

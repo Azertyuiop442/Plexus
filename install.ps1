@@ -27,12 +27,14 @@ if ((Test-Path ".\Cargo.toml") -and (Test-Path ".\src\mux.rs")) {
     git -C $InstallDir fetch --quiet origin public 2>$null
     git -C $InstallDir checkout --quiet public 2>$null
     git -C $InstallDir pull --ff-only origin public 2>$null
+    Remove-Item -Recurse -Force (Join-Path $InstallDir "assets") -ErrorAction SilentlyContinue
     $WorkDir = $InstallDir
 } else {
     Write-Host "-> Cloning Plexus into $InstallDir..." -ForegroundColor Yellow
     $ParentDir = Split-Path -Parent $InstallDir
     if (-not (Test-Path $ParentDir)) { New-Item -ItemType Directory -Path $ParentDir -Force | Out-Null }
     git clone --depth 1 -b public https://github.com/Azertyuiop442/Plexus.git $InstallDir
+    Remove-Item -Recurse -Force (Join-Path $InstallDir "assets") -ErrorAction SilentlyContinue
     $WorkDir = $InstallDir
 }
 Set-Location $WorkDir

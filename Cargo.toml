@@ -35,3 +35,6 @@ unicode-width = "0.2"
 nf-icons = "0.1.0"
 tui-spinner = "0.4"
 tachyonfx = { version = "0.25", default-features = false }
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff", "webp"] }
+ratatui-image = { version = "11.0.7", default-features = false, features = ["crossterm"] }

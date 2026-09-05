@@ -41,7 +41,12 @@ fn str_columns(s: &str) -> u16 {
     s.width() as u16
 }
 
-pub fn tab_geometries(area: Rect, titles: &[String], closable: bool) -> Vec<TabGeom> {
+pub fn tab_geometries(
+    area: Rect,
+    titles: &[String],
+    closable: bool,
+    active: usize,
+) -> Vec<TabGeom> {
     let max_x = area.right().saturating_sub(2);
     let mut x = area.left();
     let mut out = Vec::new();
@@ -61,18 +66,23 @@ pub fn tab_geometries(area: Rect, titles: &[String], closable: bool) -> Vec<TabG
             title.clone()
         };
         let close_glyph = if closable { " ✕" } else { "" };
-
-        let body = format!(" ◈ {}{} ", formatted, close_glyph);
+        let is_selected = idx == active;
+        let body = if is_selected {
+            format!(" ◈ {}{} + ", formatted, close_glyph)
+        } else {
+            format!(" ◈ {}{} ", formatted, close_glyph)
+        };
 
         let body_len = str_columns(&body);
 
-        let width = body_len + 2;
+        let tab_w = body_len + 4;
+        let width = tab_w;
         if x + width > max_x {
             break;
         }
         out.push(TabGeom {
             start_x: x,
-            body_x: x + 1,
+            body_x: x + 2,
             body_len,
             width,
         });
@@ -89,12 +99,13 @@ pub fn render_tab_bar(
 ) {
     let p = Palette::dark();
     let bg = crate::theme::effective_bg();
+    let f_area = frame.area();
 
     {
         let buf = frame.buffer_mut();
         let width = area.width as usize;
         let spaces = " ".repeat(width);
-        for y in area.top()..area.bottom() {
+        for y in area.top()..=area.bottom().min(f_area.height.saturating_sub(1)) {
             buf.set_string(area.left(), y, &spaces, Style::default().bg(bg));
         }
     }
@@ -104,11 +115,19 @@ pub fn render_tab_bar(
         .map(|pane| pane.lock().unwrap_or_else(|e| e.into_inner()).state.title.clone())
         .collect();
     let closable = panes.len() > 1;
-    let geoms = tab_geometries(area, &titles, closable);
+    let geoms = tab_geometries(area, &titles, closable, active);
 
-    let active_bg = p.accent;
-    let inactive_bg = p.surface0;
-    let btn_bg = p.surface1;
+    let active_idx = if active < geoms.len() { active } else { 0 };
+    let border_color = p.accent;
+    let border_style = Style::default().fg(border_color).bg(bg);
+    let buf = frame.buffer_mut();
+    let y = area.top();
+
+    let mut set_cell = |x: u16, cy: u16, sym: &str, style: Style| {
+        if x < f_area.width && cy < f_area.height {
+            buf[(x, cy)].set_symbol(sym).set_style(style);
+        }
+    };
 
     for (idx, geom) in geoms.iter().enumerate() {
         let raw_title = &titles[idx];
@@ -128,86 +147,85 @@ pub fn render_tab_bar(
             raw_title.clone()
         };
 
-        let pane_guard = panes[idx].lock().unwrap_or_else(|e| e.into_inner());
-        let agent_state = pane_guard.state.agent_state;
-        drop(pane_guard);
-        let spinner = {
-            let ms = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis();
-            ["|", "/", "-", "\\"][(ms / 120) as usize % 4]
-        };
-        let idle_blue = p.blue;
-        let (icon, icon_color) = match agent_state {
-            crate::agent_state::AgentState::Working => (spinner, idle_blue),
-            crate::agent_state::AgentState::Blocked => {
-
-                let blink = (SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
+        let (icon, icon_color) = if let Some(pane_lock) = panes.get(idx) {
+            let mut pane_guard = pane_lock.lock().unwrap_or_else(|e| e.into_inner());
+            crate::ui::banner::ensure_boot_info(&mut pane_guard, area);
+            let agent_state = pane_guard.state.agent_state;
+            let spinner = {
+                let ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
-                    .as_millis()
-                    / 600)
-                    % 2
-                    == 0;
-                (if blink { "!" } else { " " }, p.red)
-            }
-
-            crate::agent_state::AgentState::Idle => ("◈", idle_blue),
-        };
-        let selected = idx == active;
-        let close_glyph = if closable { " ✕" } else { "" };
-
-        let tab_body = format!(" {} {}{} ", icon, formatted_title, close_glyph);
-        let body_len = str_columns(&tab_body);
-        let x = geom.start_x;
-
-        let curr_bg = if selected { active_bg } else { inactive_bg };
-        let next_bg = if idx + 1 < geoms.len() {
-            if (idx + 1) == active {
-                active_bg
-            } else {
-                inactive_bg
+                    .as_millis();
+                ["|", "/", "-", "\\"][(ms / 120) as usize % 4]
+            };
+            let idle_blue = p.blue;
+            match agent_state {
+                crate::agent_state::AgentState::Working => (spinner, idle_blue),
+                crate::agent_state::AgentState::Blocked => {
+                    let blink = (SystemTime::now()
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis()
+                        / 600)
+                        % 2
+                        == 0;
+                    (if blink { "!" } else { " " }, p.red)
+                }
+                crate::agent_state::AgentState::Idle => ("◈", idle_blue),
             }
         } else {
-            let plus_x = geom.start_x + geom.width;
-            if plus_x + 4 <= max_x_of(area) {
-                btn_bg
-            } else {
-                bg
-            }
+            ("◈", p.blue)
         };
 
-        let inactive_text = p.overlay1;
-        let inactive_icon = p.subtext0;
+        let selected = idx == active_idx;
+        let close_glyph = if closable { " ✕" } else { "" };
+        let tab_body = if selected {
+            format!(" {} {}{} + ", icon, formatted_title, close_glyph)
+        } else {
+            format!(" {} {}{} ", icon, formatted_title, close_glyph)
+        };
+        let body_len = str_columns(&tab_body);
+        let tab_w = body_len + 4;
+        let right_x = geom.start_x + tab_w - 1;
 
-        let buf = frame.buffer_mut();
-        let y = area.top();
+        if selected {
+            set_cell(geom.start_x, y, "╭", border_style);
+            set_cell(geom.start_x + 1, y, "─", border_style);
+            set_cell(right_x - 1, y, "─", border_style);
+            set_cell(right_x, y, "╮", border_style);
+        }
 
         let mut col = 0u16;
         let total_cols = body_len;
         for ch in tab_body.chars() {
             let w = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1).max(1) as u16;
-            let cx = x + col;
+            let cx = geom.body_x + col;
+            let is_plus = selected && col == total_cols.saturating_sub(2);
             let is_close = closable
-                && col >= total_cols.saturating_sub(3)
-                && col < total_cols.saturating_sub(1);
+                && if selected {
+                    col >= total_cols.saturating_sub(5) && col <= total_cols.saturating_sub(4)
+                } else {
+                    col >= total_cols.saturating_sub(3) && col < total_cols.saturating_sub(1)
+                };
 
-            let style = if is_close {
+            let style = if is_plus {
                 Style::default()
-                    .fg(if selected { p.red } else { inactive_icon })
-                    .bg(curr_bg)
+                    .fg(p.accent)
+                    .bg(bg)
+                    .add_modifier(Modifier::BOLD)
+            } else if is_close {
+                Style::default()
+                    .fg(if selected { p.red } else { p.subtext0 })
+                    .bg(bg)
                     .add_modifier(if selected {
                         Modifier::BOLD
                     } else {
                         Modifier::empty()
                     })
             } else if col <= 1 {
-
-                let fg = if selected { p.panel_bg } else { icon_color };
                 Style::default()
-                    .fg(fg)
-                    .bg(curr_bg)
+                    .fg(if selected { icon_color } else { p.overlay0 })
+                    .bg(bg)
                     .add_modifier(if selected {
                         Modifier::BOLD
                     } else {
@@ -215,8 +233,8 @@ pub fn render_tab_bar(
                     })
             } else {
                 Style::default()
-                    .fg(if selected { p.text } else { inactive_text })
-                    .bg(curr_bg)
+                    .fg(if selected { p.text } else { p.subtext0 })
+                    .bg(bg)
                     .add_modifier(if selected {
                         Modifier::BOLD
                     } else {
@@ -224,48 +242,39 @@ pub fn render_tab_bar(
                     })
             };
 
-            buf[(cx, y)].set_symbol(&ch.to_string()).set_style(style);
+            set_cell(cx, y, &ch.to_string(), style);
             col += w;
         }
-
-        let rx = x + body_len;
-        buf[(rx, y)]
-            .set_symbol("")
-            .set_style(Style::default().fg(curr_bg).bg(next_bg));
-
-        buf[(rx + 1, y)]
-            .set_symbol(" ")
-            .set_style(Style::default().bg(next_bg));
     }
 
-    let plus_x = geoms
-        .last()
-        .map(|g| g.start_x + g.width)
-        .unwrap_or(area.left());
-    if plus_x + 4 <= max_x_of(area) {
-        let buf = frame.buffer_mut();
-        let y = area.top();
-        buf[(plus_x, y)]
-            .set_symbol(" ")
-            .set_style(Style::default().bg(btn_bg));
+    if let Some(active_geom) = geoms.get(active_idx) {
+        let row1 = area.bottom();
+        let start_x = active_geom.start_x;
+        let tab_w = active_geom.body_len + 4;
+        let right_x = start_x + tab_w - 1;
+        let max_x = area.right().saturating_sub(1);
 
-        buf[(plus_x + 1, y)].set_symbol("+").set_style(
-            Style::default()
-                .fg(p.green)
-                .bg(btn_bg)
-                .add_modifier(Modifier::BOLD),
-        );
-        buf[(plus_x + 2, y)]
-            .set_symbol(" ")
-            .set_style(Style::default().bg(btn_bg));
-        buf[(plus_x + 3, y)]
-            .set_symbol("")
-            .set_style(Style::default().fg(btn_bg).bg(bg));
+        if start_x == area.left() {
+            set_cell(area.left(), row1, "│", border_style);
+        } else {
+            set_cell(area.left(), row1, "╭", border_style);
+            for cx in area.left() + 1..start_x {
+                set_cell(cx, row1, "─", border_style);
+            }
+            set_cell(start_x, row1, "╯", border_style);
+        }
+
+        for cx in start_x + 1..right_x {
+            set_cell(cx, row1, " ", Style::default().bg(bg));
+        }
+
+        set_cell(right_x, row1, "╰", border_style);
+
+        for cx in right_x + 1..max_x {
+            set_cell(cx, row1, "─", border_style);
+        }
+        set_cell(max_x, row1, "╮", border_style);
     }
-}
-
-fn max_x_of(area: Rect) -> u16 {
-    area.right().saturating_sub(2)
 }
 
 #[cfg(test)]
@@ -296,7 +305,7 @@ mod tests {
             "cargo build".to_string(),
             "git status".to_string(),
         ];
-        let geoms = tab_geometries(rect(120), &titles, true);
+        let geoms = tab_geometries(rect(120), &titles, true, 0);
         assert_eq!(geoms.len(), 3);
         for pair in geoms.windows(2) {
             assert_eq!(pair[1].start_x, pair[0].start_x + pair[0].width);
@@ -306,15 +315,15 @@ mod tests {
     #[test]
     fn single_tab_has_no_close_glyph_but_still_fits() {
         let titles = vec!["commandcode".to_string()];
-        let geoms = tab_geometries(rect(80), &titles, false);
+        let geoms = tab_geometries(rect(80), &titles, false, 0);
         assert_eq!(geoms.len(), 1);
-        assert_eq!(geoms[0].body_len, 14);
+        assert_eq!(geoms[0].body_len, 16);
     }
 
     #[test]
     fn click_hit_test_matches_geometry() {
         let titles = vec!["commandcode".to_string(), "second".to_string()];
-        let geoms = tab_geometries(rect(100), &titles, true);
+        let geoms = tab_geometries(rect(100), &titles, true, 0);
         let mid0 = geoms[0].body_x + geoms[0].body_len / 2;
         assert!(mid0 >= geoms[0].body_x && mid0 < geoms[0].body_x + geoms[0].body_len);
     }
@@ -322,7 +331,7 @@ mod tests {
     #[test]
     fn many_tabs_break_off_cleanly_when_out_of_width() {
         let titles: Vec<String> = (0..10).map(|i| format!("session {}", i)).collect();
-        let geoms = tab_geometries(rect(60), &titles, true);
+        let geoms = tab_geometries(rect(60), &titles, true, 0);
         assert!(!geoms.is_empty());
         assert!(geoms.len() < 10);
         for g in &geoms {

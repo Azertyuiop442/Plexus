@@ -112,7 +112,7 @@ pub fn handle_mouse(
                     .collect();
                 let tab_area = Rect::new(0, 0, w, 1);
                 let closable = state.panes.len() > 1;
-                let tab_geoms = crate::ui::tab_bar::tab_geometries(tab_area, &titles, closable);
+                let tab_geoms = crate::ui::tab_bar::tab_geometries(tab_area, &titles, closable, state.active);
                 if let Some(tab_idx) = tab_geoms.iter().position(|g| rel_col >= g.start_x && rel_col < g.start_x + g.width) {
                     if let Some(display_title) = titles.get(tab_idx) {
                         state.context_menu = Some(crate::ui::context_menu::ContextMenu::for_tab(
@@ -154,6 +154,19 @@ pub fn handle_mouse(
     }
 
     if mouse.kind == MouseEventKind::ScrollUp || mouse.kind == MouseEventKind::ScrollDown {
+        if state.hover_image.is_some() {
+            state.hover_image = None;
+            state.dirty = true;
+        }
+        if let Some(p) = state.picker.as_mut() {
+            if mouse.kind == MouseEventKind::ScrollUp {
+                p.picker.move_selection(-1);
+            } else {
+                p.picker.move_selection(1);
+            }
+            state.dirty = true;
+            return Ok(());
+        }
         let col = mouse.column;
         let row = mouse.row;
         let over_sidebar = state.sidebar_open && (col as u16) < state.sidebar_w;
@@ -314,6 +327,9 @@ pub fn handle_mouse(
                             crate::ui::links::Hit::FilePath { path, line, col: _ } => {
                                 crate::ui::links::open_file_in_editor(&path, line, pending_cwd.as_deref());
                             }
+                            crate::ui::links::Hit::ImageAttachment { index } => {
+                                crate::ui::image_tooltip::open_image_attachment(index, p.state.session_id.as_deref());
+                            }
                         }
                     }
                 }
@@ -337,6 +353,71 @@ pub fn handle_mouse(
             state.hover_divider = None;
             state.dirty = true;
         }
+
+        let mut found_image_hover = None;
+        let area_width = terminal.size().map(|s| s.width).unwrap_or(80);
+        let (content_left, content_top) = content_origin(state, area_width);
+        if col >= content_left && row >= content_top {
+            if let Some(pane) = state.panes.get(state.active) {
+                if let Ok(p) = pane.lock() {
+                    let pane_w = p.term.columns() as u16;
+                    let pane_h = p.term.screen_lines() as u16;
+                    let vx = col.saturating_sub(content_left);
+                    let vy = row.saturating_sub(content_top);
+                    if vx < pane_w && vy < pane_h {
+                        let line_str = p.viewport_line_text(vy as usize);
+                        if let Some((start_col, _end_col, index)) =
+                            crate::ui::links::image_token_at(&line_str, vx as usize)
+                        {
+                            let anchor_x = content_left + start_col as u16;
+                            let anchor_y = row;
+                            if let Some(ref current) = state.hover_image {
+                                if current.index == index
+                                    && current.screen_x == anchor_x
+                                    && current.screen_y == anchor_y
+                                    && current.pane_id == state.active
+                                {
+                                    found_image_hover = Some(current.clone());
+                                }
+                            }
+                            if found_image_hover.is_none() {
+                                let session_id = p.state.session_id.clone();
+                                let screen_h = terminal.size().map(|s| s.height).unwrap_or(24);
+                                let screen = ratatui::layout::Rect::new(0, 0, area_width, screen_h);
+                                let popup = crate::ui::image_tooltip::calculate_tooltip_rect(
+                                    anchor_x,
+                                    anchor_y,
+                                    index,
+                                    screen,
+                                    session_id.as_deref(),
+                                );
+                                found_image_hover = Some(crate::state::HoverImage {
+                                    index,
+                                    screen_x: anchor_x,
+                                    screen_y: anchor_y,
+                                    pane_id: state.active,
+                                    popup_rect: popup,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if found_image_hover.is_none() {
+            if let Some(ref current) = state.hover_image {
+                let rect = current.popup_rect;
+                if col >= rect.x && col < rect.x + rect.width && row >= rect.y && row < rect.y + rect.height {
+                    found_image_hover = Some(current.clone());
+                }
+            }
+        }
+
+        if state.hover_image != found_image_hover {
+            state.hover_image = found_image_hover;
+            state.dirty = true;
+        }
     }
 
     if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
@@ -344,6 +425,24 @@ pub fn handle_mouse(
         let row = mouse.row;
         let h = terminal.size()?.height;
         let sidebar_w = state.sidebar_w;
+
+        if let Some(ref hover) = state.hover_image {
+            let rect = hover.popup_rect;
+            if col >= rect.x && col < rect.x + rect.width && row >= rect.y && row < rect.y + rect.height {
+                let session_id = state
+                    .panes
+                    .get(state.active)
+                    .and_then(|p| p.lock().ok())
+                    .and_then(|p| p.state.session_id.clone());
+                crate::ui::image_tooltip::open_image_attachment(hover.index, session_id.as_deref());
+                state.hover_image = None;
+                state.dirty = true;
+                return Ok(());
+            } else {
+                state.hover_image = None;
+                state.dirty = true;
+            }
+        }
 
         if let Some(ref menu) = state.context_menu {
             if let Some(action) = menu.hit_test(col, row) {
@@ -400,40 +499,52 @@ pub fn handle_mouse(
         if state.picker.is_some() {
             let size = terminal.size()?;
             let area = Rect::new(0, 0, size.width, size.height);
-            let (modal_rows, modal_cmds) = state
-                .active_modal
+            let visible = state
+                .picker
                 .as_ref()
-                .map(|m| (m.rows.len(), m.commands.len()))
-                .unwrap_or((6, 0));
-            if let Some(pop) = crate::ui::modal::modal_rect(area, modal_rows, modal_cmds, 56) {
+                .map(|p| p.picker.filtered_indices().len().min(14).max(4))
+                .unwrap_or(6);
+            let picker_w = 68u16.min(area.width.saturating_sub(4)).max(56);
+            if let Some(pop) = crate::ui::modal::modal_rect(area, visible + 4, 0, picker_w) {
                 if col >= pop.x
                     && col < pop.x + pop.width
                     && row >= pop.y
                     && row < pop.y + pop.height
                 {
                     let rel_y = row.saturating_sub(pop.y);
-                    if rel_y == 1 {
-                        let rel_x = col.saturating_sub(pop.x + 2) as usize;
-                        if rel_x < 6 {
+                    if rel_y == 2 {
+                        let rel_x = col.saturating_sub(pop.x + 1) as usize;
+                        if rel_x < 12 {
                             if let Some(p) = state.picker.as_mut() {
                                 p.picker.set_category(0);
                             }
-                        } else if rel_x < 14 {
+                        } else if rel_x < 24 {
                             if let Some(p) = state.picker.as_mut() {
                                 p.picker.set_category(1);
                             }
-                        } else {
+                        } else if rel_x < 44 {
                             if let Some(p) = state.picker.as_mut() {
                                 p.picker.set_category(2);
                             }
+                        } else {
+                            if let Some(p) = state.picker.as_mut() {
+                                p.picker.set_category(3);
+                            }
                         }
                         return Ok(());
-                    } else if rel_y >= 2 {
-                        let row_click = (rel_y - 2) as usize;
+                    } else if rel_y >= 4 {
+                        let row_click = (rel_y - 4) as usize;
                         if let Some(p) = state.picker.as_mut() {
                             let indices = p.picker.filtered_indices();
-                            if row_click < indices.len() {
-                                let opt_idx = indices[row_click];
+                            let visible_count = visible;
+                            let scroll_offset = if p.picker.selected < visible_count {
+                                0
+                            } else {
+                                p.picker.selected.saturating_sub(visible_count - 1)
+                            };
+                            let target_idx = scroll_offset + row_click;
+                            if target_idx < indices.len() {
+                                let opt_idx = indices[target_idx];
                                 let target_row = p.row_idx;
                                 if let Some(ref mut modal) = state.active_modal {
                                     modal.selected = target_row;
@@ -447,6 +558,7 @@ pub fn handle_mouse(
                             }
                         }
                     }
+                    return Ok(());
                 }
             }
             state.picker = None;
@@ -650,7 +762,7 @@ pub fn handle_mouse(
                         crate::ui::modal::open_auto_retry_modal(state);
                     }
                     SidebarRow::PrefSkills => {
-                        crate::ui::modal::open_skills_modal(state);
+                        crate::ui::modal::open_skills_modal_fresh(state);
                     }
                     SidebarRow::PrefSkillInjection => {
                         let mut prefs = crate::prefs::Prefs::load();
@@ -672,6 +784,9 @@ pub fn handle_mouse(
                     }
                     SidebarRow::PrefSounds => {
                         crate::ui::modal::open_sounds_modal(state);
+                    }
+                    SidebarRow::PrefWebhook => {
+                        crate::ui::modal::open_webhook_modal(state);
                     }
                     SidebarRow::ModConfig(idx) => {
                         open_mod_config_modal(state, idx);
@@ -831,13 +946,25 @@ pub fn handle_mouse(
                     .map(|p| p.lock().unwrap_or_else(|e| e.into_inner()).state.title.clone())
                     .collect();
                 let tab_area = Rect::new(sidebar_w, 0, size.width.saturating_sub(sidebar_w), 1);
-                let geoms = crate::ui::tab_bar::tab_geometries(tab_area, &titles, closable);
+                let geoms = crate::ui::tab_bar::tab_geometries(tab_area, &titles, closable, state.active);
                 let mut clicked_tab: Option<(usize, bool)> = None;
                 let mut clicked_plus = false;
+                let active_idx = if state.active < geoms.len() { state.active } else { 0 };
 
                 for (idx, geom) in geoms.iter().enumerate() {
                     if col >= geom.start_x && col < geom.start_x + geom.width {
-                        let close_zone = geom.body_x + geom.body_len.saturating_sub(3);
+                        if idx == active_idx {
+                            let plus_col = geom.start_x + geom.width.saturating_sub(4);
+                            if col >= plus_col && col <= plus_col + 2 {
+                                clicked_plus = true;
+                                break;
+                            }
+                        }
+                        let close_zone = if idx == active_idx {
+                            geom.body_x + geom.body_len.saturating_sub(5)
+                        } else {
+                            geom.body_x + geom.body_len.saturating_sub(3)
+                        };
                         if closable && col >= close_zone && col < geom.body_x + geom.body_len {
                             clicked_tab = Some((idx, true));
                         } else {
@@ -851,7 +978,7 @@ pub fn handle_mouse(
                     .last()
                     .map(|g| g.start_x + g.width)
                     .unwrap_or(tab_area.left() + 1);
-                if clicked_tab.is_none() && col >= plus_x && col < plus_x + 5 {
+                if !clicked_plus && clicked_tab.is_none() && col >= plus_x && col < plus_x + 4 {
                     clicked_plus = true;
                 }
 

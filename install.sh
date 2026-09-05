@@ -61,11 +61,17 @@ elif [[ -d "$INSTALL_DIR/.git" ]]; then
     git -C "$INSTALL_DIR" fetch --quiet origin public || true
     git -C "$INSTALL_DIR" checkout --quiet public 2>/dev/null || true
     git -C "$INSTALL_DIR" pull --ff-only origin public 2>/dev/null || true
+    rm -rf "$INSTALL_DIR/assets" 2>/dev/null || true
     DIR="$INSTALL_DIR"
 else
     echo "-> Cloning Plexus into $INSTALL_DIR..."
     mkdir -p "$(dirname "$INSTALL_DIR")"
-    git clone --depth 1 -b public https://github.com/Azertyuiop442/Plexus.git "$INSTALL_DIR"
+    if git clone --filter=blob:none --sparse --depth 1 -b public https://github.com/Azertyuiop442/Plexus.git "$INSTALL_DIR" 2>/dev/null; then
+        git -C "$INSTALL_DIR" sparse-checkout set --no-cone '/*' '!/assets' 2>/dev/null || true
+    else
+        git clone --depth 1 -b public https://github.com/Azertyuiop442/Plexus.git "$INSTALL_DIR"
+    fi
+    rm -rf "$INSTALL_DIR/assets" 2>/dev/null || true
     DIR="$INSTALL_DIR"
 fi
 cd "$DIR"

@@ -24,11 +24,15 @@ pub const BLUE: Color = Color::Rgb(0x43, 0x85, 0xBE);
 
 pub const PURPLE: Color = Color::Rgb(0x8B, 0x7E, 0xC8);
 
+pub const SHADOW: Color = Color::Rgb(0x0C, 0x0C, 0x0C);
+
 #[derive(Debug, Clone, Copy)]
 #[allow(dead_code)]
 pub struct Palette {
 
     pub accent: Color,
+
+    pub shadow: Color,
 
     pub panel_bg: Color,
 
@@ -74,6 +78,7 @@ impl Palette {
     pub const fn dark() -> Self {
         Self {
             accent: ACCENT,
+            shadow: SHADOW,
 
             panel_bg: Color::Rgb(0x1C, 0x1B, 0x1A),
             sidebar_bg: BG,

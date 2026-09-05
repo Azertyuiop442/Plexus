@@ -30,6 +30,15 @@ pub struct SkillsUpdateProgress {
     pub started_at_ms: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HoverImage {
+    pub index: usize,
+    pub screen_x: u16,
+    pub screen_y: u16,
+    pub pane_id: usize,
+    pub popup_rect: ratatui::layout::Rect,
+}
+
 pub struct AppState {
     pub panes: Vec<Arc<Mutex<MuxPane>>>,
     pub active: usize,
@@ -45,6 +54,7 @@ pub struct AppState {
     pub cmd_inspect: Option<crate::ui::cmdinfo::CmdInspectState>,
     pub switcher: Option<crate::ui::switcher::SwitcherState>,
     pub hover_divider: Option<crate::ui::borders::HoverDivider>,
+    pub hover_image: Option<HoverImage>,
     pub last_click_tab: Option<usize>,
     pub last_click_time: Option<std::time::Instant>,
 
@@ -122,6 +132,7 @@ impl AppState {
             cmd_inspect: None,
             switcher: None,
             hover_divider: None,
+            hover_image: None,
             last_click_tab: None,
             last_click_time: None,
             confirm_close_idx: None,
@@ -266,6 +277,38 @@ impl AppState {
             self.refresh_mods_now();
             self.dirty = true;
         }
+    }
+
+    pub fn active_workspace(&self) -> String {
+        if let Some(pane) = self.panes.get(self.active) {
+            if let Ok(p) = pane.lock() {
+                if let Some(ref cwd) = p.state.pending_cwd {
+                    if let Some(name) = std::path::Path::new(cwd).file_name().and_then(|n| n.to_str()) {
+                        if !name.is_empty() {
+                            return name.to_string();
+                        }
+                    }
+                }
+                if let Some(ref bi) = p.state.boot_info {
+                    if let Some(ref cwd) = bi.cwd {
+                        if let Some(name) = std::path::Path::new(cwd).file_name().and_then(|n| n.to_str()) {
+                            if !name.is_empty() {
+                                return name.to_string();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(name) = std::path::Path::new(&self.sidebar.project_cwd).file_name().and_then(|n| n.to_str()) {
+            if !name.is_empty() {
+                return name.to_string();
+            }
+        }
+        std::env::current_dir()
+            .ok()
+            .and_then(|p| p.file_name().and_then(|n| n.to_str().map(|s| s.to_string())))
+            .unwrap_or_else(|| "cmd".to_string())
     }
 }
 

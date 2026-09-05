@@ -1,12 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/header/grid.svg?title=PLEXUS&subtitle=Modular+Terminal+Multiplexer+%26+Live+Action+Dock&logo=rust&theme=cyan&mode=dark" />
-    <img alt="PLEXUS" src="https://shieldcn.dev/header/grid.svg?title=PLEXUS&subtitle=Modular+Terminal+Multiplexer+%26+Live+Action+Dock&logo=rust&theme=cyan&mode=light" />
-  </picture>
-</p>
-
-<p align="center">
-  <b>A modular, lightweight terminal multiplexer and live action dock in Rust - fully customizable with your own mods and agent feeds.</b>
+  <img src="assets/Title.jpg" alt="Plexus - Modular Terminal Multiplexer & Live Action Dock" width="100%"/>
 </p>
 
 <p align="center">
@@ -25,7 +18,10 @@
 
 ---
 
-## 01. Architecture &amp; Mod Bridge
+<a id="01-architecture--mod-bridge"></a>
+<p align="center">
+  <img src="assets/part1.jpg" alt="01. Architecture & Mod Bridge" width="100%"/>
+</p>
 
 Plexus acts as a presentation shell decoupled from background logic. Companion mods and background services communicate non-blockingly via JSON file-IPC in `/tmp/cc-sidebar/`:
 
@@ -38,10 +34,14 @@ Plexus acts as a presentation shell decoupled from background logic. Companion m
 
 ---
 
-## 02. Features
+<a id="02-features"></a>
+<p align="center">
+  <img src="assets/part2.jpg" alt="02. Features" width="100%"/>
+</p>
 
-<details>
-<summary><b>Click to expand technical features list</b></summary>
+<details align="center">
+<summary align="center"><b>Click to expand technical features list</b></summary>
+<div align="left">
 <br/>
 
 - **Decoupled Multiplexing**: Native Rust PTY terminal multiplexer with persistent tabs, background process isolation, and hot reload (<kbd>Ctrl</kbd>+<kbd>R</kbd>).
@@ -63,11 +63,15 @@ Plexus acts as a presentation shell decoupled from background logic. Companion m
 - **Self-Pulling Update Engine**:
   - In-app version detection with automatic fast-forward updates.
 
+</div>
 </details>
 
 ---
 
-## 03. Installation
+<a id="03-installation"></a>
+<p align="center">
+  <img src="assets/part3.jpg" alt="03. Installation" width="100%"/>
+</p>
 
 ### One-Command Installer
 
@@ -97,10 +101,14 @@ bash install.sh
 
 ---
 
-## 04. Keybindings
+<a id="04-keybindings"></a>
+<p align="center">
+  <img src="assets/part4.jpg" alt="04. Keybindings" width="100%"/>
+</p>
 
-<details>
-<summary><b>Click to expand keyboard shortcuts table</b></summary>
+<details align="center">
+<summary align="center"><b>Click to expand keyboard shortcuts table</b></summary>
+<div align="center">
 <br/>
 
 | Shortcut | Action | Scope |
@@ -116,19 +124,30 @@ bash install.sh
 | <kbd>Alt</kbd> + <kbd>1</kbd> .. <kbd>9</kbd> | Jump to Tab N | `[Tab Bar]` |
 | <kbd>Ctrl</kbd> + <kbd>R</kbd> | Hot Reload Shell | `[Global]` |
 
+</div>
 </details>
 
 ---
 
-## 05. Ecosystem &amp; Mod Hub
+<a id="05-ecosystem--mod-hub"></a>
+<p align="center">
+  <img src="assets/part5.jpg" alt="05. Ecosystem & Mod Hub" width="100%"/>
+</p>
 
-Discover and install community extensions on the **[Plexus Community Mods Hub](https://github.com/Azertyuiop442/plexus-community-mods)**.
+<p align="center">
+  Discover and install community extensions on the <b><a href="https://github.com/Azertyuiop442/plexus-community-mods">Plexus Community Mods Hub</a></b>.
+</p>
 
 ---
 
-## 06. License
+<a id="06-license"></a>
+<p align="center">
+  <img src="assets/part6.jpg" alt="06. License" width="100%"/>
+</p>
 
-Source-available under the [Fair &amp; Community License](LICENSE.md). Free for personal, academic, and open-source use.
+<p align="center">
+  Source-available under the <a href="LICENSE.md">Fair &amp; Community License</a>. Free for personal, academic, and open-source use.
+</p>
 
 ---
 

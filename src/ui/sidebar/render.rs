@@ -113,6 +113,65 @@ pub fn render_sidebar(
 
         let bottom_y = y0 + box_h - 1;
         if box_w >= 12 && box_h >= 6 {
+            let selected_row = sidebar.rows.get(sidebar.selected).copied();
+            let reload_icon = nf_icons::nf!("nf-cod-refresh");
+            let reload_text = format!(" {reload_icon} ");
+            let reload_len = crate::ui::text::width(&reload_text) as u16;
+            let reload_sel = selected_row == Some(super::models::SidebarRow::Reload);
+            let reload_style = if reload_sel {
+                Style::default()
+                    .fg(p.panel_bg)
+                    .bg(p.blue)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(p.blue).bg(p.sidebar_bg)
+            };
+            let reload_start = x0 + 2;
+
+            let bug_icon = nf_icons::nf!("nf-cod-bug");
+            let bug_text = format!(" {bug_icon} ");
+            let bug_len = crate::ui::text::width(&bug_text) as u16;
+            let bug_sel = selected_row == Some(super::models::SidebarRow::BugReport);
+            let bug_style = if bug_sel {
+                Style::default()
+                    .fg(p.panel_bg)
+                    .bg(p.blue)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(p.blue).bg(p.sidebar_bg)
+            };
+            let bug_start = reload_start + reload_len;
+
+            for (i, ch) in reload_text.chars().enumerate() {
+                let cx = reload_start + i as u16;
+                if cx < bug_start {
+                    frame.buffer_mut()[(cx, bottom_y)]
+                        .set_symbol(&ch.to_string())
+                        .set_style(reload_style);
+                }
+            }
+            view.zones.push(super::models::ClickZone {
+                y: bottom_y,
+                x_start: reload_start,
+                x_end: reload_start + reload_len,
+                row: super::models::SidebarRow::Reload,
+            });
+
+            for (i, ch) in bug_text.chars().enumerate() {
+                let cx = bug_start + i as u16;
+                if cx < x0 + box_w - 1 {
+                    frame.buffer_mut()[(cx, bottom_y)]
+                        .set_symbol(&ch.to_string())
+                        .set_style(bug_style);
+                }
+            }
+            view.zones.push(super::models::ClickZone {
+                y: bottom_y,
+                x_start: bug_start,
+                x_end: bug_start + bug_len,
+                row: super::models::SidebarRow::BugReport,
+            });
+
             let x_text = " 𝕏 ";
             let x_len = crate::ui::text::width(x_text);
             let x_style = Style::default()
@@ -151,7 +210,8 @@ pub fn render_sidebar(
             };
             let ver_start = x_start.saturating_sub(ver_len as u16);
 
-            if box_w >= 22 && ver_start > x0 + 8 {
+            let icons_end = bug_start + bug_len;
+            if box_w >= 22 && ver_start > icons_end + 1 {
                 for (i, ch) in ver_text.chars().enumerate() {
                     let cx = ver_start + i as u16;
                     if cx < x_start {
@@ -170,25 +230,7 @@ pub fn render_sidebar(
                 }
             }
 
-            let c_text = " © 2026 ";
-            let c_len = crate::ui::text::width(c_text);
-            let c_style = Style::default().fg(p.overlay0);
-            let max_c_x = if box_w >= 22 && ver_start > x0 + 8 {
-                ver_start
-            } else {
-                x_start
-            };
 
-            if max_c_x >= x0 + 2 + c_len as u16 {
-                for (i, ch) in c_text.chars().enumerate() {
-                    let cx = x0 + 2 + i as u16;
-                    if cx < max_c_x {
-                        frame.buffer_mut()[(cx, bottom_y)]
-                            .set_symbol(&ch.to_string())
-                            .set_style(c_style);
-                    }
-                }
-            }
         }
     }
 
@@ -283,58 +325,6 @@ pub fn render_sidebar(
                 ];
                 card_row(frame, &mut y, inner, view, row_type, spans, sel, focused, &p);
             }
-            let sel = selected_row == Some(SidebarRow::Reload);
-            let reload_icon = nf_icons::nf!("nf-cod-refresh");
-            let reload_text = format!(" {} Reload Process ", reload_icon);
-            let reload_len = crate::ui::text::width(&reload_text);
-            card_row(
-                frame,
-                &mut y,
-                inner,
-                view,
-                SidebarRow::Reload,
-                vec![
-                    Span::styled(reload_text, label_style(&p, sel)),
-                    Span::raw(pad(width, reload_len, 1)),
-                    Span::styled(
-                        "›",
-                        if sel {
-                            Style::default().fg(p.text).add_modifier(Modifier::BOLD)
-                        } else {
-                            Style::default().fg(p.overlay0)
-                        },
-                    ),
-                ],
-                sel,
-                focused,
-                &p,
-            );
-            let sel = selected_row == Some(SidebarRow::BugReport);
-            let bug_icon = nf_icons::nf!("nf-cod-bug");
-            let bug_text = format!(" {} Bug Report ", bug_icon);
-            let bug_len = crate::ui::text::width(&bug_text);
-            card_row(
-                frame,
-                &mut y,
-                inner,
-                view,
-                SidebarRow::BugReport,
-                vec![
-                    Span::styled(bug_text, label_style(&p, sel)),
-                    Span::raw(pad(width, bug_len, 1)),
-                    Span::styled(
-                        "›",
-                        if sel {
-                            Style::default().fg(p.text).add_modifier(Modifier::BOLD)
-                        } else {
-                            Style::default().fg(p.overlay0)
-                        },
-                    ),
-                ],
-                sel,
-                focused,
-                &p,
-            );
         }
         SettingsSubMenu::Preferences => {
             let sel = selected_row == Some(SidebarRow::NavBack);
@@ -460,6 +450,7 @@ pub fn render_sidebar(
                 (SidebarRow::PrefYolo, "YOLO Mode", Some(sidebar.yolo_mode)),
                 (SidebarRow::PrefShowUsage, "Show Usage", Some(sidebar.show_usage)),
                 (SidebarRow::PrefSounds, "Sound Alerts", Some(sidebar.sound_notifications)),
+                (SidebarRow::PrefWebhook, "Status Webhook", Some(sidebar.webhook_enabled)),
             ] {
                 let sel = selected_row == Some(row_type);
                 let value_span = if let Some(on) = on {

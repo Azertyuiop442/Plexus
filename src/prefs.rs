@@ -162,6 +162,53 @@ pub struct Prefs {
     pub skills: SkillsPrefs,
     #[serde(default)]
     pub sounds: SoundPrefs,
+    #[serde(default)]
+    pub webhook: WebhookPrefs,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebhookPrefs {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_webhook_url")]
+    pub url: String,
+    #[serde(default = "default_webhook_format")]
+    pub format: String,
+    #[serde(default = "default_webhook_speed")]
+    pub speed: u32,
+    #[serde(default = "default_true")]
+    pub include_usage: bool,
+    #[serde(default = "default_webhook_mode")]
+    pub mode: String,
+}
+
+fn default_webhook_url() -> String {
+    "http://matrix.local/api".to_string()
+}
+
+fn default_webhook_format() -> String {
+    "form".to_string()
+}
+
+fn default_webhook_speed() -> u32 {
+    25
+}
+
+fn default_webhook_mode() -> String {
+    "static".to_string()
+}
+
+impl Default for WebhookPrefs {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            url: default_webhook_url(),
+            format: default_webhook_format(),
+            speed: default_webhook_speed(),
+            include_usage: true,
+            mode: default_webhook_mode(),
+        }
+    }
 }
 
 fn default_true() -> bool {
@@ -187,6 +234,7 @@ impl Default for Prefs {
             auto_retry: AutoRetryPrefs::default(),
             skills: SkillsPrefs::default(),
             sounds: SoundPrefs::default(),
+            webhook: WebhookPrefs::default(),
         }
     }
 }
@@ -280,6 +328,7 @@ impl Prefs {
             "auto_retry": self.auto_retry,
             "skills": self.skills,
             "sounds": self.sounds,
+            "webhook": self.webhook,
         });
         if let Ok(json) = serde_json::to_string_pretty(&local) {
             let _ = crate::ipc::atomic_write(&local_path, &json);
@@ -384,6 +433,14 @@ mod tests {
                 sound_completed: "Ping".into(),
                 sound_blocked: "Basso".into(),
             },
+            webhook: WebhookPrefs {
+                enabled: true,
+                url: "http://test.local/api".into(),
+                format: "form".into(),
+                speed: 30,
+                include_usage: false,
+                mode: "static".into(),
+            },
         };
         p.save();
 
@@ -400,6 +457,7 @@ mod tests {
         assert_eq!(loaded.auto_retry, p.auto_retry);
         assert_eq!(loaded.sounds, p.sounds);
         assert_eq!(loaded.skills, p.skills);
+        assert_eq!(loaded.webhook, p.webhook);
     }
 
     #[test]

@@ -84,12 +84,21 @@ pub fn ensure_boot_info(pane: &mut MuxPane, area: Rect) -> bool {
 
     let (version_idx, version) = if let Some(idx) = version_pos {
         let l = &lines[idx];
-        let v = if let Some(part) = l.split("Command Code v").nth(1) {
-            part.split_whitespace().next().unwrap_or("").trim().to_string()
+        let raw_part = if let Some(part) = l.split("Command Code v").nth(1) {
+            Some(part)
         } else if let Some(part) = l.split("cmd v").nth(1) {
-            part.split_whitespace().next().unwrap_or("").trim().to_string()
+            Some(part)
         } else if let Some(part) = l.split("cmd  v").nth(1) {
-            part.split_whitespace().next().unwrap_or("").trim().to_string()
+            Some(part)
+        } else {
+            None
+        };
+        let v = if let Some(part) = raw_part {
+            if part.contains("->") || part.contains('→') {
+                part.trim().to_string()
+            } else {
+                part.split_whitespace().next().unwrap_or("").trim().to_string()
+            }
         } else {
             String::new()
         };
@@ -173,17 +182,21 @@ pub fn ensure_boot_info(pane: &mut MuxPane, area: Rect) -> bool {
             s
         }
     };
+    let process_cwd = crate::ui::pane::pid_cwd(pane.child_pid)
+        .map(&short)
+        .filter(|c| c != "~");
     let pending_cwd = pane
         .state
         .pending_cwd
-        .take()
-        .map(short)
+        .clone()
+        .map(&short)
         .filter(|c| c != "~");
     let real_cwd = std::env::current_dir()
         .ok()
         .map(|p| short(p.to_string_lossy().to_string()));
 
-    let cwd = pending_cwd
+    let cwd = process_cwd
+        .or(pending_cwd)
         .or_else(|| parsed_cwd.filter(|c| c != "~"))
         .or(real_cwd);
 
@@ -226,13 +239,14 @@ pub fn ensure_boot_info(pane: &mut MuxPane, area: Rect) -> bool {
 fn detect_version_via_binary() -> String {
     for bin in ["commandcode", "cmdc", "cmd"] {
         if let Ok(out) = std::process::Command::new(bin).arg("--version").output() {
-            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !s.is_empty() {
-                return s;
-            }
-            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-            if !err.is_empty() {
-                return err;
+            if out.status.success() {
+                let s = String::from_utf8_lossy(&out.stdout);
+                if let Some(line) = s.lines().next() {
+                    let v = line.trim();
+                    if !v.is_empty() && v.chars().any(|c| c.is_ascii_digit()) {
+                        return v.to_string();
+                    }
+                }
             }
         }
     }
@@ -384,6 +398,67 @@ pub fn maybe_render(
     }
 }
 
+fn format_version_display(raw: &str) -> String {
+    let first_line = raw.lines().next().unwrap_or("");
+    let trimmed = first_line.trim();
+    if trimmed.is_empty() || !trimmed.chars().any(|c| c.is_ascii_digit()) {
+        return String::new();
+    }
+    if trimmed.contains("Updated") || trimmed.contains("->") || trimmed.contains('→') {
+        let cleaned = trimmed
+            .replace("vUpdated", "")
+            .replace("Updated", "")
+            .replace("->", "→");
+        let parts: Vec<&str> = cleaned.split_whitespace().collect();
+        if parts.len() >= 3 && parts[1] == "→" {
+            let v1 = parts[0].trim_start_matches('v');
+            let v2 = parts[2].trim_start_matches('v');
+            return format!("{} → {}", v1, v2);
+        } else {
+            return cleaned.trim().to_string();
+        }
+    }
+    if trimmed.starts_with('v') || trimmed.starts_with('V') {
+        trimmed.to_string()
+    } else {
+        format!("v{}", trimmed)
+    }
+}
+
+fn render_model_effort_spans(
+    valid_model: Option<&str>,
+    active_effort: Option<&str>,
+    p: &Palette,
+) -> Vec<ratatui::text::Span<'static>> {
+    let mut spans = Vec::new();
+    if let Some(m_name) = valid_model {
+        spans.push(ratatui::text::Span::styled("models: ", Style::default().fg(p.subtext0)));
+        spans.push(ratatui::text::Span::styled(
+            short_model_display(m_name),
+            Style::default().fg(p.blue).add_modifier(Modifier::BOLD),
+        ));
+    }
+    if let Some(eff) = active_effort {
+        let eff_color = match eff {
+            "Max" => p.red,
+            "X-High" => p.mauve,
+            "High" => p.peach,
+            "Medium" => p.yellow,
+            "Low" => p.green,
+            _ => p.subtext0,
+        };
+        if !spans.is_empty() {
+            spans.push(ratatui::text::Span::styled("  ·  ", Style::default().fg(p.overlay0)));
+        }
+        spans.push(ratatui::text::Span::styled("effort: ", Style::default().fg(p.subtext0)));
+        spans.push(ratatui::text::Span::styled(
+            eff.to_string(),
+            Style::default().fg(eff_color).add_modifier(Modifier::BOLD),
+        ));
+    }
+    spans
+}
+
 fn render_compact_banner(
     frame: &mut ratatui::Frame,
     area: Rect,
@@ -430,36 +505,6 @@ fn render_compact_banner(
     safe_cell(frame, x0.saturating_sub(1), div_y, "├", border_style);
     safe_cell(frame, x0 + box_w, div_y, "┤", border_style);
 
-    let title = if box_w < 45 {
-        if boot_info.version.is_empty() {
-            " cmd ".to_string()
-        } else {
-            format!(" cmd v{} ", boot_info.version)
-        }
-    } else {
-        if boot_info.version.is_empty() {
-            " Command Code ".to_string()
-        } else {
-            format!(" Command Code v{} ", boot_info.version)
-        }
-    };
-    let top_border_y = y0.saturating_sub(1);
-    for (i, ch) in title.chars().enumerate() {
-        let x = x0 + 1 + i as u16;
-        if x < x0 + box_w - 1 {
-            safe_cell(
-                frame,
-                x,
-                top_border_y,
-                &ch.to_string(),
-                Style::default()
-                    .fg(accent)
-                    .bg(bg)
-                    .add_modifier(Modifier::BOLD),
-            );
-        }
-    }
-
     let safe_put = |frame: &mut ratatui::Frame,
                     x: u16,
                     y: u16,
@@ -468,6 +513,9 @@ fn render_compact_banner(
                     clamp_min_x: u16,
                     clamp_max_x: u16| {
         for (i, ch) in text.chars().enumerate() {
+            if ch.is_control() {
+                continue;
+            }
             let cx = x + i as u16;
             if cx >= clamp_min_x && cx <= clamp_max_x && y >= min_inner_y && y <= max_inner_y {
                 safe_cell(frame, cx, y, &ch.to_string(), style);
@@ -480,33 +528,39 @@ fn render_compact_banner(
     let inner_cx = inner_min_x + (inner_max_x - inner_min_x) / 2;
     let max_text_len = ((inner_max_x - inner_min_x + 1) as usize).saturating_sub(1);
 
-    let safe_put_spans = |frame: &mut ratatui::Frame,
-                          y: u16,
-                          spans: &[ratatui::text::Span],
-                          clamp_min_x: u16,
-                          clamp_max_x: u16| {
-        let total_len: usize = spans.iter().map(|s| s.content.chars().count()).sum();
-        let start_x = inner_cx.saturating_sub(total_len as u16 / 2);
-        let mut curr_x = start_x;
-        for span in spans {
-            for ch in span.content.chars() {
-                if curr_x >= clamp_min_x
-                    && curr_x <= clamp_max_x
-                    && y >= min_inner_y
-                    && y <= max_inner_y
-                {
-                    safe_cell(frame, curr_x, y, &ch.to_string(), span.style);
-                }
-                curr_x += 1;
-            }
-        }
-    };
-
     let logo: &[&str] = if box_w >= 76 {
         &COMMAND_ASCII_LOGO
     } else {
         &CMD_ASCII_LOGO
     };
+
+    let ver_str = format_version_display(&boot_info.version);
+    let logo_len = logo[0].chars().count() as u16;
+    let logo_start_x = inner_cx.saturating_sub(logo_len / 2).max(inner_min_x);
+    if !ver_str.is_empty() && y0 >= min_inner_y && y0 <= max_inner_y {
+        safe_put(
+            frame,
+            logo_start_x,
+            y0,
+            &ver_str,
+            Style::default().fg(p.blue).add_modifier(Modifier::BOLD),
+            inner_min_x,
+            inner_max_x,
+        );
+    }
+    if yolo_mode && y0 >= min_inner_y && y0 <= max_inner_y {
+        let yolo_str = "yolo on";
+        let yolo_x = (logo_start_x + logo_len.saturating_sub(1)).saturating_sub(yolo_str.len() as u16);
+        safe_put(
+            frame,
+            yolo_x,
+            y0,
+            yolo_str,
+            Style::default().fg(p.blue).add_modifier(Modifier::BOLD),
+            inner_min_x,
+            inner_max_x,
+        );
+    }
 
     for (i, row) in logo.iter().enumerate() {
         let ly = y0 + 1 + i as u16;
@@ -534,44 +588,23 @@ fn render_compact_banner(
                 .as_deref()
                 .filter(|m| !m.trim().is_empty() && !m.trim().eq_ignore_ascii_case("unknown"))
         });
-    if let Some(m_name) = valid_model {
-        if models_y <= max_inner_y {
-            let mut spans = vec![
-                ratatui::text::Span::styled("models: ", Style::default().fg(p.subtext0)),
-                ratatui::text::Span::styled(
-                    short_model_display(m_name),
-                    Style::default().fg(p.blue).add_modifier(Modifier::BOLD),
-                ),
-            ];
-
-            if let Some(eff) = active_effort {
-                let eff_color = match eff {
-                    "Max" => p.red,
-                    "X-High" => p.mauve,
-                    "High" => p.peach,
-                    "Medium" => p.yellow,
-                    "Low" => p.green,
-                    _ => p.subtext0,
-                };
-                spans.push(ratatui::text::Span::styled(
-                    "  ·  ",
-                    Style::default().fg(p.overlay0),
-                ));
-                spans.push(ratatui::text::Span::styled(
-                    "effort: ",
-                    Style::default().fg(p.subtext0),
-                ));
-                spans.push(ratatui::text::Span::styled(
-                    eff.to_string(),
-                    Style::default().fg(eff_color).add_modifier(Modifier::BOLD),
-                ));
+    let meta_spans = render_model_effort_spans(valid_model, active_effort, &p);
+    let has_meta = !meta_spans.is_empty();
+    if has_meta && models_y <= max_inner_y {
+        let total_len: usize = meta_spans.iter().map(|s| s.content.chars().count()).sum();
+        let start_x = inner_cx.saturating_sub(total_len as u16 / 2);
+        let mut curr_x = start_x;
+        for span in meta_spans {
+            for ch in span.content.chars() {
+                if curr_x >= inner_min_x && curr_x <= inner_max_x && models_y >= min_inner_y && models_y <= max_inner_y {
+                    safe_cell(frame, curr_x, models_y, &ch.to_string(), span.style);
+                }
+                curr_x += 1;
             }
-
-            safe_put_spans(frame, models_y, &spans, inner_min_x, inner_max_x);
         }
     }
 
-    let cwd_y = models_y + 1;
+    let cwd_y = if has_meta { models_y + 1 } else { models_y };
     if let Some(ref cwd) = boot_info.cwd {
         if cwd_y <= max_inner_y {
             let trunc = truncate_str(cwd, max_text_len.saturating_sub(3));
@@ -598,21 +631,6 @@ fn render_compact_banner(
                 pane.state.banner_folder_icon = Some((icon_x, cwd_y));
             }
         }
-    }
-
-    if yolo_mode && cwd_y + 1 <= max_inner_y {
-        let label = format!("{} YOLO mode on", nf!("nf-oct-zap"));
-        let len = crate::ui::text::width(&label) as u16;
-        let start_x = inner_cx.saturating_sub(len / 2);
-        safe_put(
-            frame,
-            start_x,
-            cwd_y + 1,
-            &label,
-            Style::default().fg(p.green).add_modifier(Modifier::BOLD),
-            inner_min_x,
-            inner_max_x,
-        );
     }
 }
 
@@ -663,27 +681,6 @@ fn render_large_banner(
     safe_cell(frame, x0.saturating_sub(1), div_y, "├", border_style);
     safe_cell(frame, x0 + box_w, div_y, "┤", border_style);
 
-    let title = if boot_info.version.is_empty() {
-        " Command Code ".to_string()
-    } else {
-        format!(" Command Code v{} ", boot_info.version)
-    };
-    let top_border_y = y0.saturating_sub(1);
-    for (i, ch) in title.chars().enumerate() {
-        let x = x0 + 1 + i as u16;
-        if x < x0 + box_w - 1 {
-            safe_cell(
-                frame,
-                x,
-                top_border_y,
-                &ch.to_string(),
-                Style::default()
-                    .fg(accent)
-                    .bg(bg)
-                    .add_modifier(Modifier::BOLD),
-            );
-        }
-    }
 
     let safe_put = |frame: &mut ratatui::Frame,
                     x: u16,
@@ -693,6 +690,9 @@ fn render_large_banner(
                     clamp_min_x: u16,
                     clamp_max_x: u16| {
         for (i, ch) in text.chars().enumerate() {
+            if ch.is_control() {
+                continue;
+            }
             let cx = x + i as u16;
             if cx >= clamp_min_x && cx <= clamp_max_x && y >= min_inner_y && y <= max_inner_y {
                 safe_cell(frame, cx, y, &ch.to_string(), style);
@@ -727,6 +727,35 @@ fn render_large_banner(
         &CMD_ASCII_LOGO
     };
 
+    let ver_str = format_version_display(&boot_info.version);
+    let logo_row_len = logo[0].chars().count().min(max_left_text_len) as u16;
+    let logo_start_x = left_cx.saturating_sub(logo_row_len / 2).max(left_min_x);
+    let ver_y = y0 + 1;
+    if !ver_str.is_empty() && ver_y >= min_inner_y && ver_y <= max_inner_y {
+        safe_put(
+            frame,
+            logo_start_x,
+            ver_y,
+            &ver_str,
+            Style::default().fg(p.blue).add_modifier(Modifier::BOLD),
+            left_min_x,
+            left_max_x,
+        );
+    }
+    if yolo_mode && ver_y >= min_inner_y && ver_y <= max_inner_y {
+        let yolo_str = "yolo on";
+        let yolo_x = (logo_start_x + logo_row_len.saturating_sub(1)).saturating_sub(yolo_str.len() as u16);
+        safe_put(
+            frame,
+            yolo_x,
+            ver_y,
+            yolo_str,
+            Style::default().fg(p.blue).add_modifier(Modifier::BOLD),
+            left_min_x,
+            left_max_x,
+        );
+    }
+
     for (i, row) in logo.iter().enumerate() {
         let line_y = y0 + 2 + i as u16;
         if line_y <= max_inner_y {
@@ -745,29 +774,7 @@ fn render_large_banner(
         }
     }
 
-    let safe_put_spans = |frame: &mut ratatui::Frame,
-                          y: u16,
-                          spans: &[ratatui::text::Span],
-                          clamp_min_x: u16,
-                          clamp_max_x: u16| {
-        let total_len: usize = spans.iter().map(|s| s.content.chars().count()).sum();
-        let start_x = left_cx.saturating_sub(total_len as u16 / 2);
-        let mut curr_x = start_x;
-        for span in spans {
-            for ch in span.content.chars() {
-                if curr_x >= clamp_min_x
-                    && curr_x <= clamp_max_x
-                    && y >= min_inner_y
-                    && y <= max_inner_y
-                {
-                    safe_cell(frame, curr_x, y, &ch.to_string(), span.style);
-                }
-                curr_x += 1;
-            }
-        }
-    };
-
-    let next_left_y = y0 + 2 + logo.len() as u16 + 1;
+    let next_left_y = y0 + 8;
     let valid_model = active_model
         .filter(|m| !m.trim().is_empty() && !m.trim().eq_ignore_ascii_case("unknown"))
         .or_else(|| {
@@ -776,51 +783,31 @@ fn render_large_banner(
                 .as_deref()
                 .filter(|m| !m.trim().is_empty() && !m.trim().eq_ignore_ascii_case("unknown"))
         });
-    if let Some(m_name) = valid_model {
-        if next_left_y <= max_inner_y {
-            let mut spans = vec![
-                ratatui::text::Span::styled("models: ", Style::default().fg(p.subtext0)),
-                ratatui::text::Span::styled(
-                    short_model_display(m_name),
-                    Style::default().fg(p.blue).add_modifier(Modifier::BOLD),
-                ),
-            ];
-
-            if let Some(eff) = active_effort {
-                let eff_color = match eff {
-                    "Max" => p.red,
-                    "X-High" => p.mauve,
-                    "High" => p.peach,
-                    "Medium" => p.yellow,
-                    "Low" => p.green,
-                    _ => p.subtext0,
-                };
-                spans.push(ratatui::text::Span::styled(
-                    "  ·  ",
-                    Style::default().fg(p.overlay0),
-                ));
-                spans.push(ratatui::text::Span::styled(
-                    "effort: ",
-                    Style::default().fg(p.subtext0),
-                ));
-                spans.push(ratatui::text::Span::styled(
-                    eff.to_string(),
-                    Style::default().fg(eff_color).add_modifier(Modifier::BOLD),
-                ));
+    let meta_spans = render_model_effort_spans(valid_model, active_effort, &p);
+    let has_meta = !meta_spans.is_empty();
+    if has_meta && next_left_y <= max_inner_y {
+        let total_len: usize = meta_spans.iter().map(|s| s.content.chars().count()).sum();
+        let start_x = left_cx.saturating_sub(total_len as u16 / 2);
+        let mut curr_x = start_x;
+        for span in meta_spans {
+            for ch in span.content.chars() {
+                if curr_x >= left_min_x && curr_x <= left_max_x && next_left_y >= min_inner_y && next_left_y <= max_inner_y {
+                    safe_cell(frame, curr_x, next_left_y, &ch.to_string(), span.style);
+                }
+                curr_x += 1;
             }
-
-            safe_put_spans(frame, next_left_y, &spans, left_min_x, left_max_x);
         }
     }
+    let cwd_y = if has_meta { next_left_y + 1 } else { next_left_y };
     if let Some(ref cwd) = boot_info.cwd {
-        if next_left_y + 1 <= max_inner_y {
+        if cwd_y <= max_inner_y {
             let trunc = truncate_str(cwd, max_left_text_len);
             let len = trunc.chars().count() as u16;
             let start_x = left_cx.saturating_sub(len / 2);
             safe_put(
                 frame,
                 start_x,
-                next_left_y + 1,
+                cwd_y,
                 &trunc,
                 Style::default().fg(p.subtext0),
                 left_min_x,
@@ -831,28 +818,13 @@ fn render_large_banner(
                 safe_cell(
                     frame,
                     icon_x,
-                    next_left_y + 1,
+                    cwd_y,
                     nf!("nf-cod-folder_opened"),
                     Style::default().fg(accent).add_modifier(Modifier::BOLD),
                 );
-                pane.state.banner_folder_icon = Some((icon_x, next_left_y + 1));
+                pane.state.banner_folder_icon = Some((icon_x, cwd_y));
             }
         }
-    }
-
-    if yolo_mode && next_left_y + 2 <= max_inner_y {
-        let label = format!("{} YOLO mode on", nf!("nf-oct-zap"));
-        let len = crate::ui::text::width(&label) as u16;
-        let start_x = left_cx.saturating_sub(len / 2);
-        safe_put(
-            frame,
-            start_x,
-            next_left_y + 2,
-            &label,
-            Style::default().fg(p.green).add_modifier(Modifier::BOLD),
-            left_min_x,
-            left_max_x,
-        );
     }
 
     let put_cmd = |frame: &mut ratatui::Frame, cx: u16, y: u16, cmd: &str, desc: &str| {
@@ -929,21 +901,10 @@ mod tests {
     #[test]
     fn yolo_label_rendered_in_both_compact_and_large() {
         let src = include_str!("banner.rs");
-        let count = src.matches("YOLO mode on").count();
+        let count = src.matches("\"yolo on\"").count();
         assert!(
             count >= 2,
-            "expected at least 2 'YOLO mode on' labels (compact + large), found {count}"
-        );
-    }
-
-    #[test]
-    fn yolo_label_does_not_use_red_or_panel_bg() {
-        let src = include_str!("banner.rs");
-        let start = src.find("YOLO mode on").unwrap();
-        let window = &src[start.saturating_sub(120)..start + 20];
-        assert!(
-            !window.contains("p.red") && !window.contains("panel_bg"),
-            "YOLO label still uses red or panel_bg: {window}"
+            "expected at least 2 'yolo on' labels (compact + large), found {count}"
         );
     }
 
@@ -975,6 +936,21 @@ mod tests {
         p.scroll_reset();
         let h_after_reset = banner_height(&mut p, area);
         assert_eq!(h_after_reset, BOX_H_LARGE);
+    }
+
+    #[test]
+    fn format_version_display_handles_updates_and_plain_versions() {
+        assert_eq!(
+            format_version_display("Updated 1.46.0 -> 1.47.0"),
+            "1.46.0 → 1.47.0"
+        );
+        assert_eq!(
+            format_version_display("vUpdated 1.46.0 -> 1.47.0"),
+            "1.46.0 → 1.47.0"
+        );
+        assert_eq!(format_version_display("1.47.0"), "v1.47.0");
+        assert_eq!(format_version_display("v1.47.0"), "v1.47.0");
+        assert_eq!(format_version_display(""), "");
     }
 }
 

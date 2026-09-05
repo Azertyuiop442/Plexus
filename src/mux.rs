@@ -29,6 +29,7 @@ mod usage;
 mod auto_retry;
 mod skills;
 mod sound;
+mod webhook;
 
 use crate::mux_core::input::{handle_key, handle_mouse};
 use crate::mux_core::pane_ops::spawn_pane;
@@ -161,6 +162,7 @@ fn main() -> io::Result<()> {
     sidebar.ide_context = prefs.ide_context;
     sidebar.show_cost_bar = prefs.show_cost_bar;
     sidebar.show_context_btn = prefs.show_context_btn;
+    sidebar.webhook_enabled = prefs.webhook.enabled;
     if sidebar.yolo_mode && !command.contains("--yolo") {
         command.push_str(" --yolo");
     }
@@ -192,10 +194,23 @@ fn main() -> io::Result<()> {
     crate::usage::spawn_usage_checker(state.events.clone());
     crate::skills::check_all_background(state.events.clone());
 
+    if prefs.webhook.enabled && !prefs.webhook.url.is_empty() {
+        let session = state
+            .panes
+            .get(state.active)
+            .and_then(|p| p.lock().ok())
+            .map(|p| p.state.title.clone())
+            .unwrap_or_else(|| "Terminal 1".to_string());
+        let workspace = state.active_workspace();
+        let payload = crate::webhook::build_standby_payload(&prefs.webhook, &session, &workspace);
+        crate::webhook::dispatch_async(prefs.webhook.url.clone(), prefs.webhook.format.clone(), payload);
+    }
+
     let mut last_sidebar_refresh = std::time::Instant::now();
     let mut last_mods_refresh = std::time::Instant::now();
     let mut last_picker_check = std::time::Instant::now();
     let mut last_update_check = std::time::Instant::now();
+    let mut last_webhook_check = std::time::Instant::now();
     let mut last_saved_prefs = prefs.clone();
     let mut last_draw = std::time::Instant::now();
 
@@ -229,6 +244,9 @@ fn main() -> io::Result<()> {
                         }
                         state.dirty = true;
                     }
+                }
+                crate::mux_events::MuxEvent::ChangeWorkspaceDir { gen, path } => {
+                    let _ = crate::mux_core::pane_ops::replace_pane_cwd_by_gen(&mut state, gen, &path);
                 }
                 crate::mux_events::MuxEvent::UpdateAvailable { version } => {
                     state.available_update = Some(version.clone());
@@ -310,12 +328,9 @@ fn main() -> io::Result<()> {
             state.dirty = true;
         }
         if state.panes.is_empty() {
-
             let (cols, rows) = (80, 24);
-            if spawn_pane(&mut state, &command, cols, rows).is_err() {
-                let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-                let _ = spawn_pane(&mut state, &shell, cols, rows);
-            }
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+            let _ = spawn_pane(&mut state, &shell, cols, rows);
             state.dirty = true;
         }
         state.clamp_active();
@@ -540,11 +555,67 @@ fn main() -> io::Result<()> {
             current.sidebar_w = state.sidebar_w;
             current.sidebar_open = state.sidebar_open;
             current.auto_retry.enabled = state.sidebar.auto_retry_enabled;
+            current.webhook.enabled = state.sidebar.webhook_enabled;
             if current != last_saved_prefs {
                 current.save();
                 last_saved_prefs = current;
             }
             last_sidebar_refresh = std::time::Instant::now();
+        }
+
+        if last_webhook_check.elapsed() >= std::time::Duration::from_millis(1000) {
+            last_webhook_check = std::time::Instant::now();
+            let wh_prefs = Prefs::load().webhook;
+            if wh_prefs.enabled && !wh_prefs.url.is_empty() {
+                let (state_str, session_title) = if let Some(pane) = state.panes.get(state.active) {
+                    if let Ok(p) = pane.lock() {
+                        let st = match p.state.agent_state {
+                            crate::agent_state::AgentState::Working => "running",
+                            crate::agent_state::AgentState::Blocked => "waiting_for_input",
+                            crate::agent_state::AgentState::Idle => "idle",
+                        };
+                        (st, p.state.title.clone())
+                    } else {
+                        ("idle", "Terminal".to_string())
+                    }
+                } else {
+                    ("idle", "Terminal".to_string())
+                };
+
+                let workspace = state.active_workspace();
+                let mut cost = state.sidebar.usage.as_ref().map(|u| u.monthly_remaining + u.purchased_remaining + u.free_remaining);
+                let mut tokens = None;
+                let mut turns = None;
+
+                for m in &state.mods_data.mods {
+                    if m.id == "cost-tracker" || m.data.mod_id == "cost-tracker" {
+                        for seg in &m.data.segments {
+                            if seg.text.starts_with('$') {
+                                if let Ok(parsed) = seg.text.trim_start_matches('$').parse::<f64>() {
+                                    cost = Some(parsed);
+                                }
+                            }
+                        }
+                        if !m.data.turns.is_empty() {
+                            turns = Some(m.data.turns.len() as u64);
+                        }
+                        if let Some(cu) = &m.data.context_usage {
+                            tokens = Some(cu.used);
+                        }
+                    }
+                }
+
+                let payload = crate::webhook::build_status_payload(
+                    &wh_prefs,
+                    state_str,
+                    &session_title,
+                    &workspace,
+                    cost,
+                    tokens,
+                    turns,
+                );
+                crate::webhook::dispatch_if_changed(&wh_prefs, payload);
+            }
         }
 
         if last_update_check.elapsed() >= std::time::Duration::from_secs(300) {
