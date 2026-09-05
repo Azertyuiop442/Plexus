@@ -140,10 +140,7 @@ bash install.sh
 
 ---
 
-<a id="06-license"></a>
-<p align="center">
-  <img src="assets/part6.jpg" alt="06. License" width="100%"/>
-</p>
+<h2 align="center">License</h2>
 
 <p align="center">
   Source-available under the <a href="LICENSE.md">Fair &amp; Community License</a>. Free for personal, academic, and open-source use.
