@@ -116,7 +116,11 @@ pub fn active_pane_size(state: &AppState) -> (u16, u16) {
 
 pub fn clean_base_cmd(cmd: &str, yolo: bool) -> String {
     let trimmed = cmd.trim();
-    let after_cd = if let Some(rest) = trimmed.strip_prefix("cd ") {
+    let after_cd = if let Some(rest) = trimmed.strip_prefix("Set-Location ") {
+        rest.split_once(';')
+            .map(|(_, right)| right.trim())
+            .unwrap_or(trimmed)
+    } else if let Some(rest) = trimmed.strip_prefix("cd ") {
         rest.split_once("&&")
             .map(|(_, right)| right.trim())
             .unwrap_or(trimmed)
@@ -188,6 +192,9 @@ pub fn replace_pane_cwd_by_gen(
     };
 
     let base_cmd = clean_base_cmd(&old_cmd, state.sidebar.yolo_mode);
+    #[cfg(windows)]
+    let new_cmd = format!("Set-Location '{}'; {}", new_cwd, base_cmd);
+    #[cfg(not(windows))]
     let new_cmd = format!(
         "cd {} && {}",
         crate::mux_core::nav::shell_quote(new_cwd),

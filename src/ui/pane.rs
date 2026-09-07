@@ -145,20 +145,50 @@ impl MuxPane {
             })
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
+        #[cfg(not(windows))]
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+        #[cfg(windows)]
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "powershell.exe".to_string());
+
         let mut cmd = portable_pty::CommandBuilder::new(&shell);
         for (k, v) in std::env::vars() {
             cmd.env(k, v);
         }
-        if command == shell
-            || command == "/bin/zsh"
-            || command == "zsh"
-            || command == "/bin/bash"
-            || command == "bash"
+
+        #[cfg(not(windows))]
         {
-            cmd.args(["-l"]);
-        } else {
-            cmd.args(["-lic", command]);
+            if command == shell
+                || command == "/bin/zsh"
+                || command == "zsh"
+                || command == "/bin/bash"
+                || command == "bash"
+            {
+                cmd.args(["-l"]);
+            } else {
+                cmd.args(["-lic", command]);
+            }
+        }
+
+        #[cfg(windows)]
+        {
+            let is_shell = command == shell
+                || command == "powershell"
+                || command == "powershell.exe"
+                || command == "cmd"
+                || command == "cmd.exe"
+                || command == "pwsh"
+                || command == "pwsh.exe";
+            if is_shell {
+                if shell.contains("cmd") {
+                    cmd.args(["/K"]);
+                } else {
+                    cmd.args(["-NoLogo"]);
+                }
+            } else if shell.contains("cmd") {
+                cmd.args(["/K", command]);
+            } else {
+                cmd.args(["-NoLogo", "-NoExit", "-ExecutionPolicy", "Bypass", "-Command", command]);
+            }
         }
         let child = pair
             .slave

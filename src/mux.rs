@@ -100,14 +100,32 @@ fn main() -> io::Result<()> {
         .unwrap_or_else(|| "commandcode".to_string());
     let new_tab_command = args.get(2).cloned().unwrap_or_else(|| command.clone());
 
+    fn default_shell_name() -> String {
+        #[cfg(windows)]
+        {
+            std::env::var("SHELL").unwrap_or_else(|_| "powershell.exe".to_string())
+        }
+        #[cfg(not(windows))]
+        {
+            std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string())
+        }
+    }
+
     fn ensure_cd_prefix(cmd: &str) -> String {
-        if cmd.trim_start().starts_with("cd ") {
+        if cmd.trim_start().starts_with("cd ") || cmd.trim_start().starts_with("Set-Location ") {
             return cmd.to_string();
         }
         match std::env::current_dir() {
             Ok(d) => {
                 let d = d.to_string_lossy().to_string();
-                format!("cd {} && {}", crate::mux_core::input::shell_quote(&d), cmd)
+                #[cfg(windows)]
+                {
+                    format!("Set-Location '{}'; {}", d, cmd)
+                }
+                #[cfg(not(windows))]
+                {
+                    format!("cd {} && {}", crate::mux_core::input::shell_quote(&d), cmd)
+                }
             }
             Err(_) => cmd.to_string(),
         }
@@ -189,7 +207,7 @@ fn main() -> io::Result<()> {
     let cols = size.width.saturating_sub(state.sidebar_w + 3).max(20);
     let rows = size.height.saturating_sub(4).max(5);
     if spawn_pane(&mut state, &command, cols, rows).is_err() {
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+        let shell = default_shell_name();
         if spawn_pane(&mut state, &shell, cols, rows).is_err() {
 
             let _ = std::fs::write(
@@ -338,7 +356,7 @@ fn main() -> io::Result<()> {
         }
         if state.panes.is_empty() {
             let (cols, rows) = (80, 24);
-            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+            let shell = default_shell_name();
             let _ = spawn_pane(&mut state, &shell, cols, rows);
             state.dirty = true;
         }
