@@ -52,8 +52,7 @@ pub fn spawn_pane(state: &mut AppState, cmd: &str, cols: u16, rows: u16) -> io::
             std::thread::spawn(move || {
                 loop {
                     std::thread::sleep(std::time::Duration::from_millis(500));
-
-                    let alive = unsafe { libc::kill(pid as i32, 0) == 0 };
+                    let alive = crate::orphan_journal::is_process_alive(pid);
                     if !alive {
 
                         std::thread::sleep(std::time::Duration::from_millis(250));
@@ -237,7 +236,7 @@ pub fn replace_pane_cwd_by_gen(
             std::thread::spawn(move || {
                 loop {
                     std::thread::sleep(std::time::Duration::from_millis(500));
-                    let alive = unsafe { libc::kill(pid as i32, 0) == 0 };
+                    let alive = crate::orphan_journal::is_process_alive(pid);
                     if !alive {
                         std::thread::sleep(std::time::Duration::from_millis(250));
                         let _ = events.send(MuxEvent::PaneExited { gen });

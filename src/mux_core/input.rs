@@ -16,7 +16,7 @@ pub use super::mouse::{handle_mouse, handle_scroll_accum};
 #[allow(unused_imports)]
 pub use super::mouse::build_selected_row;
 pub use super::dictation::flush_dictation;
-pub use super::nav::{change_pane_cwd, read_clipboard, reload_mux, shell_quote};
+pub use super::nav::{change_pane_cwd, reload_mux, shell_quote};
 
 fn handle_skills_modal_enter(state: &mut AppState) {
     if !crate::ui::modal::skills::is_skills_modal(state) {

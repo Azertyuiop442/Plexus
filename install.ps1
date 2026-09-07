@@ -41,6 +41,12 @@ Set-Location $WorkDir
 
 Write-Host "-> Compiling release binaries..." -ForegroundColor Yellow
 cargo build --release
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "======================================================" -ForegroundColor Red
+    Write-Host " [ERROR] Compilation failed with exit code $LASTEXITCODE" -ForegroundColor Red
+    Write-Host "======================================================" -ForegroundColor Red
+    exit $LASTEXITCODE
+}
 
 Write-Host "-> Deploying to $HOME\.commandcode\bin\..." -ForegroundColor Yellow
 $BinDir = Join-Path $HOME ".commandcode\bin"
@@ -48,8 +54,18 @@ if (-not (Test-Path $BinDir)) {
     New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
 }
 
-Copy-Item "target\release\plexus.exe" -Destination "$BinDir\plexus.exe" -Force -ErrorAction SilentlyContinue
-Copy-Item "target\release\cc-mux.exe" -Destination "$BinDir\cc-mux.exe" -Force -ErrorAction SilentlyContinue
+$PlexusExe = "target\release\plexus.exe"
+$CcMuxExe = "target\release\cc-mux.exe"
+
+if (-not (Test-Path $PlexusExe) -or -not (Test-Path $CcMuxExe)) {
+    Write-Host "======================================================" -ForegroundColor Red
+    Write-Host " [ERROR] Compiled binaries not found in target\release" -ForegroundColor Red
+    Write-Host "======================================================" -ForegroundColor Red
+    exit 1
+}
+
+Copy-Item $PlexusExe -Destination "$BinDir\plexus.exe" -Force
+Copy-Item $CcMuxExe -Destination "$BinDir\cc-mux.exe" -Force
 
 Write-Host "======================================================" -ForegroundColor Cyan
 Write-Host " [OK] Plexus successfully installed on Windows!       " -ForegroundColor Green

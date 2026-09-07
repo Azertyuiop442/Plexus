@@ -23,35 +23,86 @@ fn now_epoch_secs() -> u64 {
 }
 
 fn current_ppid() -> u32 {
-    unsafe { libc::getpid() as u32 }
+    std::process::id()
 }
 
-fn is_process_alive(pid: u32) -> bool {
+fn parent_pid() -> u32 {
+    #[cfg(unix)]
+    unsafe { libc::getppid() as u32 }
+    #[cfg(not(unix))]
+    { 0 }
+}
+
+#[cfg(unix)]
+pub fn is_process_alive(pid: u32) -> bool {
     if pid == 0 {
         return false;
     }
     unsafe { libc::kill(pid as i32, 0) == 0 }
 }
 
+#[cfg(windows)]
+pub fn is_process_alive(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, ERROR_ACCESS_DENIED, GetLastError, WAIT_TIMEOUT,
+    };
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return GetLastError() == ERROR_ACCESS_DENIED;
+        }
+        let alive = WaitForSingleObject(handle, 0) == WAIT_TIMEOUT;
+        CloseHandle(handle);
+        alive
+    }
+}
+
+#[cfg(unix)]
+fn kill_signal(pid: u32, sig: i32) {
+    unsafe {
+        libc::kill(pid as i32, sig);
+    }
+}
+
+#[cfg(windows)]
+fn kill_signal(pid: u32, _sig: i32) {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
+    unsafe {
+        let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
+        if !handle.is_null() {
+            let _ = TerminateProcess(handle, 1);
+            CloseHandle(handle);
+        }
+    }
+}
+
 fn terminate_process(pid: u32) {
     let my_pid = current_ppid();
-    let my_ppid = unsafe { libc::getppid() as u32 };
-    if pid <= 1 || pid == my_pid || pid == my_ppid {
+    let my_ppid = parent_pid();
+    if pid <= 1 || pid == my_pid || (my_ppid > 0 && pid == my_ppid) {
         return;
     }
     if !is_process_alive(pid) {
         return;
     }
-    unsafe {
-        libc::kill(pid as i32, libc::SIGTERM);
-    }
-
-    std::thread::sleep(std::time::Duration::from_millis(50));
-    if is_process_alive(pid) {
-        unsafe {
-
-            libc::kill(pid as i32, libc::SIGKILL);
+    #[cfg(unix)]
+    {
+        kill_signal(pid, libc::SIGTERM);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        if is_process_alive(pid) {
+            kill_signal(pid, libc::SIGKILL);
         }
+    }
+    #[cfg(windows)]
+    {
+        kill_signal(pid, 1);
     }
 }
 

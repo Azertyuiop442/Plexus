@@ -43,14 +43,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .expect("Failed to launch cc-mux or commandcode")
         });
 
-    let child_id = child.id();
+    let _child_id = child.id();
 
     loop {
 
         if !running.load(Ordering::SeqCst) {
 
+            #[cfg(unix)]
             unsafe {
-                libc::kill(child_id as i32, libc::SIGTERM);
+                libc::kill(_child_id as i32, libc::SIGTERM);
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = child.kill();
             }
             let _ = child.wait();
             std::process::exit(0);

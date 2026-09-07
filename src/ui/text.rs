@@ -12,8 +12,13 @@ pub fn current_system_time() -> String {
         .map(|d| d.as_secs() as libc::time_t)
         .unwrap_or(0);
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    #[cfg(unix)]
     unsafe {
         libc::localtime_r(&epoch, &mut tm);
+    }
+    #[cfg(windows)]
+    unsafe {
+        libc::localtime_s(&mut tm, &epoch);
     }
     format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
 }

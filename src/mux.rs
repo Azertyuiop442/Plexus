@@ -69,6 +69,7 @@ fn main() -> io::Result<()> {
         let _ = std::fs::write(crate::ipc::ipc_path("panic.log"), &msg);
     }));
 
+    #[cfg(unix)]
     unsafe {
         extern "C" fn on_signal(sig: libc::c_int) {
             crate::ipc::log_append("resize.log", &format!("signal: {sig} (exit)"));
@@ -82,6 +83,14 @@ fn main() -> io::Result<()> {
         libc::signal(libc::SIGHUP, on_signal as libc::sighandler_t);
         libc::signal(libc::SIGINT, on_signal as libc::sighandler_t);
         libc::signal(libc::SIGUSR1, on_reload as libc::sighandler_t);
+    }
+    #[cfg(windows)]
+    {
+        let _ = ctrlc::set_handler(move || {
+            crate::ipc::log_append("resize.log", "signal: ctrl-c (exit)");
+            crate::orphan_journal::kill_all_registered();
+            std::process::exit(0);
+        });
     }
 
     let args: Vec<String> = std::env::args().collect();

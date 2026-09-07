@@ -106,7 +106,15 @@ pub fn read_clipboard() -> Option<String> {
             .ok()
             .and_then(|out| if out.status.success() { String::from_utf8(out.stdout).ok() } else { None })
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command", "Get-Clipboard"])
+            .output()
+            .ok()
+            .and_then(|out| if out.status.success() { String::from_utf8(out.stdout).ok() } else { None })
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         std::process::Command::new("wl-paste")
             .output()
@@ -121,9 +129,7 @@ pub fn read_clipboard() -> Option<String> {
 }
 
 pub fn reload_mux() {
-    use std::os::unix::process::CommandExt;
-
-    crate::ipc::log_append("resize.log", "reload: SIGUSR1 exec");
+    crate::ipc::log_append("resize.log", "reload: exec");
     crate::orphan_journal::kill_all_registered();
     let mut stdout = io::stdout();
     let _ = execute!(stdout, DisableMouseCapture);
@@ -133,21 +139,44 @@ pub fn reload_mux() {
     print!("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?25h\x1b[2J\x1b[1;1H");
     let _ = stdout.flush();
 
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-    let bin = std::path::PathBuf::from(format!("{}/.commandcode/bin/cc-mux", home));
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| ".".into());
+    let exe_name = if cfg!(windows) { "cc-mux.exe" } else { "cc-mux" };
+    let bin = std::path::PathBuf::from(home)
+        .join(".commandcode")
+        .join("bin")
+        .join(exe_name);
     let args: Vec<String> = std::env::args().collect();
     let target = if bin.exists() {
         bin
     } else {
-        std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("cc-mux"))
+        std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from(exe_name))
     };
 
-    let err = std::process::Command::new(&target)
-        .args(&args[1..])
-        .exec();
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let err = std::process::Command::new(&target)
+            .args(&args[1..])
+            .exec();
+        eprintln!("Failed to reload cc-mux: {}", err);
+        std::process::exit(1);
+    }
 
-    eprintln!("Failed to reload cc-mux: {}", err);
-    std::process::exit(1);
+    #[cfg(windows)]
+    {
+        match std::process::Command::new(&target)
+            .args(&args[1..])
+            .spawn()
+        {
+            Ok(_) => std::process::exit(0),
+            Err(err) => {
+                eprintln!("Failed to reload cc-mux: {}", err);
+                std::process::exit(1);
+            }
+        }
+    }
 }
 
 static FOLDER_PICKER_ACTIVE: std::sync::atomic::AtomicBool =
