@@ -73,6 +73,20 @@ if (-not (Test-Path $PlexusExe) -or -not (Test-Path $CcMuxExe)) {
 Copy-Item $PlexusExe -Destination "$BinDir\plexus.exe" -Force
 Copy-Item $CcMuxExe -Destination "$BinDir\cc-mux.exe" -Force
 
+$CargoBin = Join-Path $HOME ".cargo\bin"
+if (Test-Path $CargoBin) {
+    Copy-Item $PlexusExe -Destination "$CargoBin\plexus.exe" -Force
+    Copy-Item $CcMuxExe -Destination "$CargoBin\cc-mux.exe" -Force
+}
+
+$UserPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+if ($UserPath -notlike "*$BinDir*") {
+    [System.Environment]::SetEnvironmentVariable("Path", "$UserPath;$BinDir", "User")
+}
+if ($env:Path -notlike "*$BinDir*") {
+    $env:Path = "$BinDir;" + $env:Path
+}
+
 Write-Host "======================================================" -ForegroundColor Cyan
 Write-Host " [OK] Plexus successfully installed on Windows!       " -ForegroundColor Green
 Write-Host "    - Standalone: Run 'plexus.exe'                    " -ForegroundColor White
