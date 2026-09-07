@@ -54,15 +54,21 @@ if ! command -v cargo >/dev/null 2>&1; then
 fi
 
 INSTALL_DIR="$HOME/.commandcode/mods/cc-dashboard"
-if [[ -f "./Cargo.toml" && -f "./src/mux.rs" ]]; then
-    DIR="$(pwd)"
-elif [[ -d "$INSTALL_DIR/.git" ]]; then
+if [[ -d "$INSTALL_DIR/.git" ]]; then
     echo "-> Pulling latest release in $INSTALL_DIR..."
     git -C "$INSTALL_DIR" fetch --quiet origin public || true
     git -C "$INSTALL_DIR" checkout --quiet public 2>/dev/null || true
     git -C "$INSTALL_DIR" pull --ff-only origin public 2>/dev/null || true
     rm -rf "$INSTALL_DIR/assets" 2>/dev/null || true
     DIR="$INSTALL_DIR"
+elif [[ -f "./Cargo.toml" && -f "./src/mux.rs" ]]; then
+    DIR="$(pwd)"
+    if [[ -d "./.git" ]]; then
+        echo "-> Pulling latest release in $DIR..."
+        git fetch --quiet origin public || true
+        git checkout --quiet public 2>/dev/null || true
+        git pull --ff-only origin public 2>/dev/null || true
+    fi
 else
     echo "-> Cloning Plexus into $INSTALL_DIR..."
     mkdir -p "$(dirname "$INSTALL_DIR")"

@@ -20,15 +20,21 @@ if (-not (Get-Command "cargo" -ErrorAction SilentlyContinue)) {
 }
 
 $InstallDir = Join-Path $HOME ".commandcode\mods\cc-dashboard"
-if ((Test-Path ".\Cargo.toml") -and (Test-Path ".\src\mux.rs")) {
-    $WorkDir = (Get-Location).Path
-} elseif (Test-Path (Join-Path $InstallDir ".git")) {
+if (Test-Path (Join-Path $InstallDir ".git")) {
     Write-Host "-> Pulling latest release in $InstallDir..." -ForegroundColor Yellow
-    git -C $InstallDir fetch --quiet origin public 2>$null
-    git -C $InstallDir checkout --quiet public 2>$null
-    git -C $InstallDir pull --ff-only origin public 2>$null
+    git -C $InstallDir fetch origin public
+    git -C $InstallDir checkout public
+    git -C $InstallDir pull --ff-only origin public
     Remove-Item -Recurse -Force (Join-Path $InstallDir "assets") -ErrorAction SilentlyContinue
     $WorkDir = $InstallDir
+} elseif ((Test-Path ".\Cargo.toml") -and (Test-Path ".\src\mux.rs")) {
+    $WorkDir = (Get-Location).Path
+    if (Test-Path ".\.git") {
+        Write-Host "-> Pulling latest release in $WorkDir..." -ForegroundColor Yellow
+        git fetch origin public
+        git checkout public
+        git pull --ff-only origin public
+    }
 } else {
     Write-Host "-> Cloning Plexus into $InstallDir..." -ForegroundColor Yellow
     $ParentDir = Split-Path -Parent $InstallDir
