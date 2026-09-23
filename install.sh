@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "======================================================"
+echo "          Installing Plexus                           "
+echo "======================================================"
+
+OS="$(uname -s)"
+
+echo "-> Checking Nerd Font installation..."
+install_nerd_font_macos() {
+    if command -v brew >/dev/null 2>&1; then
+        echo "   Installing JetBrainsMono Nerd Font via Homebrew..."
+        brew install --cask font-jetbrains-mono-nerd-font >/dev/null 2>&1 || true
+    else
+        echo "   Downloading JetBrainsMono Nerd Font to ~/Library/Fonts/..."
+        mkdir -p ~/Library/Fonts
+        curl -fsSL "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz" -o /tmp/JetBrainsMono.tar.xz
+        tar -xf /tmp/JetBrainsMono.tar.xz -C ~/Library/Fonts/ "*.ttf" 2>/dev/null || true
+        rm -f /tmp/JetBrainsMono.tar.xz
+    fi
+}
+
+install_nerd_font_linux() {
+    echo "   Downloading JetBrainsMono Nerd Font to ~/.local/share/fonts/..."
+    mkdir -p ~/.local/share/fonts
+    curl -fsSL "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz" -o /tmp/JetBrainsMono.tar.xz
+    tar -xf /tmp/JetBrainsMono.tar.xz -C ~/.local/share/fonts/ "*.ttf" 2>/dev/null || true
+    rm -f /tmp/JetBrainsMono.tar.xz
+    if command -v fc-cache >/dev/null 2>&1; then
+        fc-cache -f ~/.local/share/fonts >/dev/null 2>&1 || true
+    fi
+}
+
+has_nerd_font() {
+    ls "$HOME/Library/Fonts"/*Nerd* >/dev/null 2>&1 && return 0
+    ls /Library/Fonts/*Nerd* >/dev/null 2>&1 && return 0
+    ls "$HOME/.local/share/fonts"/*Nerd* >/dev/null 2>&1 && return 0
+    if command -v fc-list >/dev/null 2>&1; then
+        fc-list 2>/dev/null | grep -qi "Nerd Font" && return 0
+    fi
+    return 1
+}
+
+if [[ "$OS" == "Darwin" ]]; then
+    if has_nerd_font; then
+        echo "   Nerd Font already detected."
+    else
+        install_nerd_font_macos
+    fi
+elif [[ "$OS" == "Linux" ]]; then
+    if has_nerd_font; then
+        echo "   Nerd Font already detected."
+    else
+        install_nerd_font_linux
+    fi
+fi
+
+echo "-> Checking Rust & Cargo..."
+if ! command -v cargo >/dev/null 2>&1; then
+    echo "   Cargo not found. Installing Rust via rustup..."
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    source "$HOME/.cargo/env" 2>/dev/null || true
+fi
+
+INSTALL_DIR="$HOME/.commandcode/mods/cc-dashboard"
+if [[ -d "$INSTALL_DIR/.git" ]]; then
+    echo "-> Pulling latest release in $INSTALL_DIR..."
+    git -C "$INSTALL_DIR" fetch --quiet origin public || true
+    git -C "$INSTALL_DIR" checkout --quiet public 2>/dev/null || true
+    git -C "$INSTALL_DIR" pull --ff-only origin public 2>/dev/null || true
+    rm -rf "$INSTALL_DIR/assets" 2>/dev/null || true
+    DIR="$INSTALL_DIR"
+elif [[ -f "./Cargo.toml" && -f "./src/mux.rs" ]]; then
+    DIR="$(pwd)"
+    if [[ -d "./.git" ]]; then
+        echo "-> Pulling latest release in $DIR..."
+        git fetch --quiet origin public || true
+        git checkout --quiet public 2>/dev/null || true
+        git pull --ff-only origin public 2>/dev/null || true
+    fi
+else
+    echo "-> Cloning Plexus into $INSTALL_DIR..."
+    mkdir -p "$(dirname "$INSTALL_DIR")"
+    if git clone --filter=blob:none --sparse --depth 1 -b public https://github.com/Azertyuiop442/Plexus.git "$INSTALL_DIR" 2>/dev/null; then
+        git -C "$INSTALL_DIR" sparse-checkout set --no-cone '/*' '!/assets' 2>/dev/null || true
+    else
+        git clone --depth 1 -b public https://github.com/Azertyuiop442/Plexus.git "$INSTALL_DIR"
+    fi
+    rm -rf "$INSTALL_DIR/assets" 2>/dev/null || true
+    DIR="$INSTALL_DIR"
+fi
+cd "$DIR"
+
+echo "-> Compiling release binaries..."
+cargo build --release
+
+if [[ "$OS" == "Darwin" ]]; then
+    xattr -c target/release/cc-mux 2>/dev/null || true
+    codesign -s - -f target/release/cc-mux 2>/dev/null || true
+    if [ -f target/release/cc-dashboard ]; then
+        xattr -c target/release/cc-dashboard 2>/dev/null || true
+        codesign -s - -f target/release/cc-dashboard 2>/dev/null || true
+    fi
+fi
+
+echo "-> Deploying atomically to ~/.commandcode/bin/..."
+mkdir -p ~/.commandcode/bin ~/.local/bin
+
+cp target/release/cc-mux ~/.commandcode/bin/.cc-mux.tmp.$$
+chmod 755 ~/.commandcode/bin/.cc-mux.tmp.$$
+mv -f ~/.commandcode/bin/.cc-mux.tmp.$$ ~/.commandcode/bin/cc-mux
+ln -sf cc-mux ~/.commandcode/bin/plexus
+
+if [ -f target/release/cc-dashboard ]; then
+    cp target/release/cc-dashboard ~/.commandcode/bin/.cc-dashboard.tmp.$$
+    chmod 755 ~/.commandcode/bin/.cc-dashboard.tmp.$$
+    mv -f ~/.commandcode/bin/.cc-dashboard.tmp.$$ ~/.commandcode/bin/cc-dashboard
+fi
+
+ln -sf ~/.commandcode/bin/cc-mux ~/.local/bin/plexus
+ln -sf ~/.commandcode/bin/cc-mux ~/.local/bin/cc-mux
+ln -sf ~/.commandcode/bin/cc-dashboard ~/.local/bin/cc-dashboard 2>/dev/null || true
+
+case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) echo "   [note] $HOME/.local/bin is not on PATH; add it to use 'plexus' directly." ;;
+esac
+
+echo "======================================================"
+echo " [OK] Plexus successfully installed and synchronized! "
+echo "    - Standalone: Run 'plexus' or 'cc-mux'            "
+echo "    - In Command Code: Type '/dashboard'              "
+echo "======================================================"

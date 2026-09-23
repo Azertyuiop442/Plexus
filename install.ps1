@@ -1,0 +1,114 @@
+Write-Host "======================================================" -ForegroundColor Cyan
+Write-Host "          Installing Plexus on Windows                " -ForegroundColor Cyan
+Write-Host "======================================================" -ForegroundColor Cyan
+
+Write-Host "-> Checking Nerd Font installation..." -ForegroundColor Yellow
+$FontInstalled = Get-ItemProperty -Path "HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Fonts", "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts" -ErrorAction SilentlyContinue | Get-Member -MemberType NoteProperty | Where-Object { $_.Name -like "*Nerd Font*" }
+
+if (-not $FontInstalled) {
+    Write-Host "   Installing JetBrainsMono Nerd Font via winget..." -ForegroundColor Yellow
+    winget install -e --id DEVCOM.JetBrainsMonoNerdFont --silent --accept-source-agreements --accept-package-agreements 2>$null
+} else {
+    Write-Host "   Nerd Font already detected." -ForegroundColor Green
+}
+
+Write-Host "-> Checking Rust & Cargo..." -ForegroundColor Yellow
+if (-not (Get-Command "cargo" -ErrorAction SilentlyContinue)) {
+    Write-Host "   Cargo not found. Installing Rustup via winget..." -ForegroundColor Yellow
+    winget install -e --id Rustlang.Rustup --silent --accept-source-agreements --accept-package-agreements 2>$null
+    $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+    $env:Path = @($userPath, $machinePath, (Join-Path $HOME ".cargo\bin")) -join ";"
+}
+
+if (-not (Get-Command "cargo" -ErrorAction SilentlyContinue)) {
+    Write-Host "======================================================" -ForegroundColor Red
+    Write-Host " [ERROR] Cargo is not available on PATH." -ForegroundColor Red
+    Write-Host "         Open a new terminal and re-run install.ps1," -ForegroundColor Red
+    Write-Host "         or install Rust from https://rustup.rs" -ForegroundColor Red
+    Write-Host "======================================================" -ForegroundColor Red
+    exit 1
+}
+
+$InstallDir = Join-Path $HOME ".commandcode\mods\cc-dashboard"
+if (Test-Path (Join-Path $InstallDir ".git")) {
+    Write-Host "-> Pulling latest release in $InstallDir..." -ForegroundColor Yellow
+    git -C $InstallDir fetch origin public
+    git -C $InstallDir checkout public
+    git -C $InstallDir pull --ff-only origin public
+    Remove-Item -Recurse -Force (Join-Path $InstallDir "assets") -ErrorAction SilentlyContinue
+    $WorkDir = $InstallDir
+} elseif ((Test-Path ".\Cargo.toml") -and (Test-Path ".\src\mux.rs")) {
+    $WorkDir = (Get-Location).Path
+    if (Test-Path ".\.git") {
+        Write-Host "-> Pulling latest release in $WorkDir..." -ForegroundColor Yellow
+        git fetch origin public
+        git checkout public
+        git pull --ff-only origin public
+    }
+} else {
+    Write-Host "-> Cloning Plexus into $InstallDir..." -ForegroundColor Yellow
+    $ParentDir = Split-Path -Parent $InstallDir
+    if (-not (Test-Path $ParentDir)) { New-Item -ItemType Directory -Path $ParentDir -Force | Out-Null }
+    git clone --depth 1 -b public https://github.com/Azertyuiop442/Plexus.git $InstallDir
+    Remove-Item -Recurse -Force (Join-Path $InstallDir "assets") -ErrorAction SilentlyContinue
+    $WorkDir = $InstallDir
+}
+Set-Location $WorkDir
+
+Write-Host "-> Compiling release binaries..." -ForegroundColor Yellow
+cargo build --release
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "======================================================" -ForegroundColor Red
+    Write-Host " [ERROR] Compilation failed with exit code $LASTEXITCODE" -ForegroundColor Red
+    Write-Host "======================================================" -ForegroundColor Red
+    exit $LASTEXITCODE
+}
+
+Write-Host "-> Deploying to $HOME\.commandcode\bin\..." -ForegroundColor Yellow
+$BinDir = Join-Path $HOME ".commandcode\bin"
+if (-not (Test-Path $BinDir)) {
+    New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
+}
+
+$PlexusExe = "target\release\plexus.exe"
+$CcMuxExe = "target\release\cc-mux.exe"
+$CcDashboardExe = "target\release\cc-dashboard.exe"
+
+if (-not (Test-Path $PlexusExe) -or -not (Test-Path $CcMuxExe)) {
+    Write-Host "======================================================" -ForegroundColor Red
+    Write-Host " [ERROR] Compiled binaries not found in target\release" -ForegroundColor Red
+    Write-Host "======================================================" -ForegroundColor Red
+    exit 1
+}
+
+Copy-Item $PlexusExe -Destination "$BinDir\plexus.exe" -Force
+Copy-Item $CcMuxExe -Destination "$BinDir\cc-mux.exe" -Force
+if (Test-Path $CcDashboardExe) {
+    Copy-Item $CcDashboardExe -Destination "$BinDir\cc-dashboard.exe" -Force
+}
+
+$CargoBin = Join-Path $HOME ".cargo\bin"
+if (Test-Path $CargoBin) {
+    Copy-Item $PlexusExe -Destination "$CargoBin\plexus.exe" -Force
+    Copy-Item $CcMuxExe -Destination "$CargoBin\cc-mux.exe" -Force
+    if (Test-Path $CcDashboardExe) {
+        Copy-Item $CcDashboardExe -Destination "$CargoBin\cc-dashboard.exe" -Force
+    }
+}
+
+$UserPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+if ([string]::IsNullOrEmpty($UserPath)) {
+    [System.Environment]::SetEnvironmentVariable("Path", $BinDir, "User")
+} elseif ($UserPath -notlike "*$BinDir*") {
+    [System.Environment]::SetEnvironmentVariable("Path", "$UserPath;$BinDir", "User")
+}
+if ($env:Path -notlike "*$BinDir*") {
+    $env:Path = "$BinDir;" + $env:Path
+}
+
+Write-Host "======================================================" -ForegroundColor Cyan
+Write-Host " [OK] Plexus successfully installed on Windows!       " -ForegroundColor Green
+Write-Host "    - Standalone: Run 'plexus.exe'                    " -ForegroundColor White
+Write-Host "    - In Command Code: Type '/dashboard'              " -ForegroundColor White
+Write-Host "======================================================" -ForegroundColor Cyan

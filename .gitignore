@@ -1,0 +1,11 @@
+/target
+.commandcode/
+tests/
+AGENTS.md
+scripts/
+*.html
+*.log
+*.tmp
+.env*
+.DS_Store
+Thumbs.db
