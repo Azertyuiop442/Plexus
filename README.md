@@ -1,26 +1,30 @@
 <p align="center">
-  <img src="assets/Title.jpg" alt="Plexus - Modular Terminal Multiplexer & Live Action Dock" width="100%"/>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/hero-dark.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="./assets/hero-light.svg" />
+    <img src="./assets/hero-dark.svg" alt="Plexus — Animated Hydra Octopus in ASCII" width="100%" />
+  </picture>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Azertyuiop442/Plexus/releases"><img src="https://shieldcn.dev/badge/plexus-v0.1.6-24837b.svg?logo=rust&variant=outline" alt="Plexus v0.1.6"/></a>
-  <a href="https://github.com/Azertyuiop442/Plexus"><img src="https://shieldcn.dev/github/stars/Azertyuiop442/Plexus.svg?variant=outline" alt="GitHub Stars"/></a>
-  <a href="LICENSE.md"><img src="https://shieldcn.dev/badge/license-Fair_%26_Community.svg?variant=outline" alt="License"/></a>
+  <a href="https://github.com/Azertyuiop442/Plexus/releases"><picture><source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/plexus-v0.1.6-4485be.svg?logo=rust&variant=outline" /><source media="(prefers-color-scheme: light)" srcset="https://shieldcn.dev/badge/plexus-v0.1.6-285987.svg?logo=rust" /><img src="https://shieldcn.dev/badge/plexus-v0.1.6-4485be.svg?logo=rust&variant=outline" alt="Plexus v0.1.6" /></picture></a>
+  <a href="https://github.com/Azertyuiop442/Plexus"><picture><source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/stars/Azertyuiop442/Plexus.svg?variant=outline" /><source media="(prefers-color-scheme: light)" srcset="https://shieldcn.dev/github/stars/Azertyuiop442/Plexus.svg?color=1f2328" /><img src="https://shieldcn.dev/github/stars/Azertyuiop442/Plexus.svg?variant=outline" alt="GitHub Stars" /></picture></a>
+  <a href="LICENSE.md"><picture><source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/License-Fair_%26_Community-4485be.svg?variant=outline" /><source media="(prefers-color-scheme: light)" srcset="https://shieldcn.dev/badge/License-Fair_%26_Community-285987.svg" /><img src="https://shieldcn.dev/badge/License-Fair_%26_Community-4485be.svg?variant=outline" alt="License" /></picture></a>
 </p>
 
 <p align="center">
-  <img src="https://skillicons.dev/icons?i=rust,bash,git,linux,apple,windows" alt="Tech Stack"/>
-</p>
-
-<p align="center">
-  <img src="assets/screenshot.png" alt="Plexus Terminal Multiplexer Screenshot" width="100%"/>
+  <img src="assets/screenshot.png" alt="Plexus Terminal Multiplexer Screenshot" width="100%" />
 </p>
 
 ---
 
 <a id="01-architecture--mod-bridge"></a>
 <p align="center">
-  <img src="assets/part1.jpg" alt="01. Architecture & Mod Bridge" width="100%"/>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/div-01-dark.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="./assets/div-01-light.svg" />
+    <img src="./assets/div-01-dark.svg" alt="01. Architecture & Mod Bridge" width="100%" />
+  </picture>
 </p>
 
 Plexus acts as a presentation shell decoupled from background logic. Companion mods and background services communicate non-blockingly via JSON file-IPC in `/tmp/cc-sidebar/`:
@@ -29,16 +33,14 @@ Plexus acts as a presentation shell decoupled from background logic. Companion m
 - `mod-pickup.json`: Plexus routes user clicks and triggers back to the active mod.
 
 <p align="center">
-  <img src="assets/architecture.svg" alt="Plexus Architecture Decoupling" width="100%"/>
+  <img src="assets/architecture.svg" alt="Plexus Architecture Decoupling" width="100%" />
 </p>
 
 ---
 
 <a id="02-features"></a>
-<h2 align="center">02. Features</h2>
-
-<details align="center">
-<summary align="center"><b>Click to expand technical features list</b></summary>
+<details>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/div-02-dark.svg" /><source media="(prefers-color-scheme: light)" srcset="./assets/div-02-light.svg" /><img src="./assets/div-02-dark.svg" alt="02. Core Features" width="98%" align="absmiddle" /></picture></summary>
 <div align="left">
 <br/>
 
@@ -68,7 +70,11 @@ Plexus acts as a presentation shell decoupled from background logic. Companion m
 
 <a id="03-installation"></a>
 <p align="center">
-  <img src="assets/part3.jpg" alt="03. Installation" width="100%"/>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/div-03-dark.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="./assets/div-03-light.svg" />
+    <img src="./assets/div-03-dark.svg" alt="03. Installation" width="100%" />
+  </picture>
 </p>
 
 ### One-Command Installer
@@ -83,14 +89,7 @@ curl -fsSL https://raw.githubusercontent.com/Azertyuiop442/Plexus/public/install
 irm https://raw.githubusercontent.com/Azertyuiop442/Plexus/public/install.ps1 | iex
 ```
 
-### Upgrading from v0.1.3
-
-To upgrade to v0.1.4 and activate the self-pulling update engine, re-run the one-command installer above or run:
-```bash
-git -C ~/.commandcode/mods/cc-dashboard pull --ff-only origin public && bash ~/.commandcode/mods/cc-dashboard/install.sh
-```
-
-### Manual Build
+### Upgrade / Manual Build
 ```bash
 git clone https://github.com/Azertyuiop442/Plexus.git ~/.commandcode/mods/cc-dashboard
 cd ~/.commandcode/mods/cc-dashboard
@@ -100,10 +99,8 @@ bash install.sh
 ---
 
 <a id="04-keybindings"></a>
-<h2 align="center">04. Keybindings</h2>
-
-<details align="center">
-<summary align="center"><b>Click to expand keyboard shortcuts table</b></summary>
+<details>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="./assets/div-04-dark.svg" /><source media="(prefers-color-scheme: light)" srcset="./assets/div-04-light.svg" /><img src="./assets/div-04-dark.svg" alt="04. Keybindings" width="98%" align="absmiddle" /></picture></summary>
 <div align="center">
 <br/>
 
@@ -126,7 +123,11 @@ bash install.sh
 
 <a id="05-ecosystem--mod-hub"></a>
 <p align="center">
-  <img src="assets/part5.jpg" alt="05. Ecosystem & Mod Hub" width="100%"/>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/div-05-dark.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="./assets/div-05-light.svg" />
+    <img src="./assets/div-05-dark.svg" alt="05. Ecosystem & Mod Hub" width="100%" />
+  </picture>
 </p>
 
 <p align="center">
@@ -143,11 +144,24 @@ bash install.sh
 
 ---
 
-<h2 align="center">Reviews &amp; Ratings</h2>
+<h3 align="center">Want to leave feedback?</h3>
 
 <p align="center">
-  <a href="https://peership.dev"><img src="https://peership.dev/api/badge/abd3bcce-ceb3-4b11-a3d8-0781d98e43dc" alt="Plexus on PeerShip"/></a>
-  <br/><br/>
-  Tested Plexus? Share your rating and review on PeerShip! <br/>
-  <a href="https://peership.dev"><b>Leave your review for Plexus on peership.dev</b></a>
+  <a href="https://peership.dev">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="./assets/peership-dark.svg" />
+      <source media="(prefers-color-scheme: light)" srcset="./assets/peership-light.svg" />
+      <img src="./assets/peership-dark.svg" alt="PeerShip" width="100%" />
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://x.com/astra442">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/Follow%20%7C-@astra442-FFFFFF.svg?logo=x&variant=outline" />
+      <source media="(prefers-color-scheme: light)" srcset="https://shieldcn.dev/badge/Follow%20%7C-@astra442-1f2328.svg?logo=x" />
+      <img src="https://shieldcn.dev/badge/Follow%20%7C-@astra442-FFFFFF.svg?logo=x&variant=outline" alt="Follow @astra442 on X" />
+    </picture>
+  </a>
 </p>
